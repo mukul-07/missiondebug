@@ -39,6 +39,50 @@ def _filename(robot_id: str) -> str:
     return f"{robot_id}_{ts}.mcap"
 
 
+def save_now(
+    config: AgentConfig,
+    ring: RingBuffer,
+    *,
+    label: str | None = None,
+    schema_loader: Callable[[str], str] | None = None,
+) -> SaveResponse:
+    """Flush the ring buffer to a new MCAP file. Returns SaveResponse.
+
+    Used both by the HTTP endpoint and by the anomaly callback (no HTTP roundtrip).
+    """
+    snap = ring.snapshot()
+    if not snap:
+        raise HTTPException(status_code=409, detail="ring buffer is empty")
+
+    output_dir = Path(config.output_dir)
+    topic_types = {t.name: t.type for t in config.topics}
+    path = output_dir / _filename(config.robot_id)
+
+    kw = {}
+    if schema_loader is not None:
+        kw["schema_loader"] = schema_loader
+    meta: SessionMetadata = write_session(
+        snap,
+        path,
+        robot_id=config.robot_id,
+        topic_types=topic_types,
+        label=label,
+        **kw,
+    )
+    log.info(
+        "Saved session %s (%d msgs, %.2fs, %s)",
+        meta.session_id, len(snap), meta.duration_ns / 1e9, meta.label,
+    )
+    return SaveResponse(
+        session_id=meta.session_id,
+        path=meta.path,
+        duration_s=meta.duration_ns / 1e9,
+        topics=meta.topics,
+        size_bytes=meta.size_bytes,
+        label=meta.label,
+    )
+
+
 def build_app(
     config: AgentConfig,
     ring: RingBuffer,
@@ -46,8 +90,6 @@ def build_app(
     schema_loader: Callable[[str], str] | None = None,
 ) -> FastAPI:
     app = FastAPI(title="MissionDebug Agent")
-    topic_types = {t.name: t.type for t in config.topics}
-    output_dir = Path(config.output_dir)
 
     @app.get("/healthz")
     def healthz():
@@ -55,38 +97,10 @@ def build_app(
 
     @app.post("/sessions/save", response_model=SaveResponse)
     def save_session(req: SaveRequest | None = None) -> SaveResponse:
-        snap = ring.snapshot()
-        if not snap:
-            raise HTTPException(status_code=409, detail="ring buffer is empty")
-
-        path = output_dir / _filename(config.robot_id)
-        try:
-            kw = {}
-            if schema_loader is not None:
-                kw["schema_loader"] = schema_loader
-            meta: SessionMetadata = write_session(
-                snap,
-                path,
-                robot_id=config.robot_id,
-                topic_types=topic_types,
-                label=(req.label if req else None),
-                **kw,
-            )
-        except Exception:
-            log.exception("Failed to write session")
-            raise
-
-        log.info(
-            "Saved session %s (%d msgs, %.2fs, %s)",
-            meta.session_id, len(snap), meta.duration_ns / 1e9, meta.label,
-        )
-        return SaveResponse(
-            session_id=meta.session_id,
-            path=meta.path,
-            duration_s=meta.duration_ns / 1e9,
-            topics=meta.topics,
-            size_bytes=meta.size_bytes,
-            label=meta.label,
+        return save_now(
+            config, ring,
+            label=(req.label if req else None),
+            schema_loader=schema_loader,
         )
 
     return app

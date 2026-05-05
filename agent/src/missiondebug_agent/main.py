@@ -10,11 +10,10 @@ import threading
 from pathlib import Path
 
 import uvicorn
-from fastapi.testclient import TestClient
 
 from .anomaly import StallAnomaly, StallDetector
 from .config import AgentConfig
-from .http_api import build_app
+from .http_api import build_app, save_now
 from .ring_buffer import RingBuffer
 
 log = logging.getLogger("missiondebug_agent")
@@ -39,14 +38,13 @@ def main() -> None:
     ring = RingBuffer(window_seconds=config.buffer_seconds)
     app = build_app(config, ring)
 
-    # The detector triggers a save by hitting our own HTTP API in-process.
-    client = TestClient(app)
-
-    def trigger_save_on_stall(anomaly: StallAnomaly) -> None:
+    def trigger_save_on_stall(_anomaly: StallAnomaly) -> None:
         log.info("Auto-saving session due to stall anomaly")
-        r = client.post("/sessions/save", json={"label": "anomaly:stall"})
-        if r.status_code != 200:
-            log.error("Auto-save failed: %s %s", r.status_code, r.text)
+        try:
+            resp = save_now(config, ring, label="anomaly:stall")
+            log.info("Auto-saved %s (%.2fs)", resp.session_id, resp.duration_s)
+        except Exception:
+            log.exception("Auto-save failed")
 
     detector = StallDetector(
         velocity_threshold=config.anomaly.stall_velocity_threshold,
