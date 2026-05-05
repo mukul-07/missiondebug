@@ -36,8 +36,12 @@ def _resolve_msg_type(type_str: str):
 class RosBridge:
     """Wraps an rclpy Node with one subscription per configured topic."""
 
-    def __init__(self, config: AgentConfig, buffer: RingBuffer,
-                 cmd_vel_callback: Callable | None = None) -> None:
+    def __init__(
+        self,
+        config: AgentConfig,
+        buffer: RingBuffer,
+        message_callbacks: dict[str, Callable] | None = None,
+    ) -> None:
         # Defer rclpy import — only required at runtime.
         import rclpy
         from rclpy.node import Node
@@ -47,7 +51,8 @@ class RosBridge:
         self._serialize = serialize_message
         self._buffer = buffer
         self._config = config
-        self._cmd_vel_callback = cmd_vel_callback
+        # topic name -> callback(msg, ts_ns). Topic must be in `config.topics`.
+        self._callbacks: dict[str, Callable] = message_callbacks or {}
 
         if not rclpy.ok():
             rclpy.init()
@@ -59,8 +64,9 @@ class RosBridge:
 
     def _subscribe(self, topic: TopicConfig) -> None:
         msg_cls = _resolve_msg_type(topic.type)
+        cb_for_topic = self._callbacks.get(topic.name)
 
-        def cb(msg, _topic_name=topic.name, _is_cmd_vel=topic.name == "/cmd_vel"):
+        def cb(msg, _topic_name=topic.name, _user_cb=cb_for_topic):
             try:
                 payload = self._serialize(msg)
                 ts = time.monotonic_ns()
@@ -72,8 +78,8 @@ class RosBridge:
                         payload=payload,
                     )
                 )
-                if _is_cmd_vel and self._cmd_vel_callback is not None:
-                    self._cmd_vel_callback(msg, ts)
+                if _user_cb is not None:
+                    _user_cb(msg, ts)
             except Exception:
                 log.exception("Failed to buffer message on %s", _topic_name)
                 raise

@@ -1,4 +1,4 @@
-from missiondebug_agent.anomaly import StallAnomaly, StallDetector
+from missiondebug_agent.detectors.stall import StallAnomaly, StallDetector
 
 
 def test_stall_fires_after_duration():
