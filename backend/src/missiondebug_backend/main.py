@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import logging
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import uvicorn
@@ -16,11 +18,48 @@ from .scanner import scan_directory
 
 log = logging.getLogger(__name__)
 
+# How often to rescan the sessions directory for new MCAP files. Cheap because
+# the scanner skips paths already in the DB.
+RESCAN_INTERVAL_S = 5.0
+
 
 def build_app(sessions_dir: Path, db_path: Path) -> FastAPI:
     db = Db(db_path)
 
-    app = FastAPI(title="MissionDebug Backend")
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        # Initial scan synchronously so /api/sessions is populated before
+        # the first request lands.
+        scan_directory(sessions_dir, db)
+
+        stop = asyncio.Event()
+
+        async def periodic_rescan():
+            while not stop.is_set():
+                try:
+                    await asyncio.wait_for(stop.wait(), timeout=RESCAN_INTERVAL_S)
+                    return  # stop fired — exit
+                except asyncio.TimeoutError:
+                    pass
+                try:
+                    n = await asyncio.to_thread(scan_directory, sessions_dir, db)
+                    if n:
+                        log.info("Rescan picked up %d new session(s)", n)
+                except Exception:
+                    log.exception("Periodic rescan failed")
+
+        task = asyncio.create_task(periodic_rescan(), name="periodic_rescan")
+        try:
+            yield
+        finally:
+            stop.set()
+            task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):
+                pass
+
+    app = FastAPI(title="MissionDebug Backend", lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[
@@ -28,7 +67,7 @@ def build_app(sessions_dir: Path, db_path: Path) -> FastAPI:
             "http://127.0.0.1:5173",
         ],
         allow_credentials=False,
-        allow_methods=["GET", "OPTIONS"],
+        allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["*"],
         expose_headers=["Content-Range", "Content-Length", "Accept-Ranges"],
     )
@@ -48,16 +87,14 @@ def build_app(sessions_dir: Path, db_path: Path) -> FastAPI:
         n = scan_directory(sessions_dir, db)
         return {"indexed": n}
 
-    @app.on_event("startup")
-    def _startup():
-        scan_directory(sessions_dir, db)
-
     return app
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO,
-                       format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--sessions-dir",
