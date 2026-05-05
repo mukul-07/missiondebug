@@ -1,0 +1,13 @@
+robot_id: "robot-001"
+buffer_seconds: 60
+topics:
+  - { name: "/tf", type: "tf2_msgs/msg/TFMessage" }
+  - { name: "/cmd_vel", type: "geometry_msgs/msg/Twist" }
+  - { name: "/camera/image_raw/compressed", type: "sensor_msgs/msg/CompressedImage" }
+output_dir: "./sessions"
+http_host: "127.0.0.1"
+http_port: 7000
+anomaly:
+  stall_velocity_threshold: 0.01
+  stall_duration_seconds: 5.0
+  cooldown_seconds: 30.0

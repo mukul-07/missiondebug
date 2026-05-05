@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.uv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Node
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+
+# Data
+sessions/
+*.mcap
+*.db
+*.sqlite
+*.sqlite3
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Env
+.env
+.env.local

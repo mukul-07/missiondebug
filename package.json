@@ -1,0 +1,14 @@
+{
+  "name": "missiondebug",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "dev": "bash scripts/dev.sh",
+    "fmt": "biome format --write .",
+    "lint": "biome check ."
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4"
+  },
+  "packageManager": "pnpm@9.12.0"
+}
