@@ -10,16 +10,44 @@ if ! command -v tmux >/dev/null 2>&1; then
   exit 1
 fi
 
+# Auto-detect a ROS 2 install (humble preferred, then jazzy).
+ROS_SETUP=""
+for candidate in /opt/ros/humble/setup.bash /opt/ros/jazzy/setup.bash; do
+  if [ -f "$candidate" ]; then
+    ROS_SETUP="$candidate"
+    break
+  fi
+done
+
+# The agent needs ROS sourced + its python venv on PATH.
+AGENT_CMD=""
+if [ -n "$ROS_SETUP" ]; then
+  AGENT_CMD+="source '$ROS_SETUP'; "
+fi
+if [ -f "$ROOT/agent/.venv/bin/activate" ]; then
+  AGENT_CMD+="source '$ROOT/agent/.venv/bin/activate'; "
+fi
+AGENT_CMD+="python -m missiondebug_agent.main --config config.example.yaml"
+
+# Backend just needs its venv (or uv run as fallback).
+BACKEND_CMD=""
+if [ -f "$ROOT/backend/.venv/bin/activate" ]; then
+  BACKEND_CMD+="source '$ROOT/backend/.venv/bin/activate'; "
+fi
+BACKEND_CMD+="python -m missiondebug_backend.main --sessions-dir ../agent/sessions"
+
+WEB_CMD="pnpm dev"
+
 tmux kill-session -t "$SESSION" 2>/dev/null || true
 
 tmux new-session -d -s "$SESSION" -n agent -c "$ROOT/agent" \
-  "python -m missiondebug_agent.main --config config.example.yaml"
+  "bash -lc \"$AGENT_CMD\""
 
 tmux split-window -t "$SESSION":agent -h -c "$ROOT/backend" \
-  "python -m missiondebug_backend.main --sessions-dir ../agent/sessions"
+  "bash -lc \"$BACKEND_CMD\""
 
 tmux split-window -t "$SESSION":agent -v -c "$ROOT/web" \
-  "pnpm dev"
+  "bash -lc \"$WEB_CMD\""
 
 tmux select-layout -t "$SESSION":agent tiled
 tmux attach -t "$SESSION"
