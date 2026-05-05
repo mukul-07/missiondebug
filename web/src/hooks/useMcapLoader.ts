@@ -95,14 +95,21 @@ export function useMcapLoader(url: string | null): LoadedSession {
           break;
         }
         case "done": {
-          // Sort each track by time (worker order should already be).
           for (const arr of cur.videoByTopic.values())
             arr.sort((a, b) => Number(a.timeNs - b.timeNs));
           for (const arr of cur.twistByTopic.values())
             arr.sort((a, b) => Number(a.timeNs - b.timeNs));
           for (const arr of cur.tfByTopic.values())
             arr.sort((a, b) => Number(a.timeNs - b.timeNs));
-          const updated = { ...cur, done: true };
+          // Create new Map references so React's reference-equality picks
+          // up the data accumulated via in-place mutation in the cases above.
+          const updated = {
+            ...cur,
+            videoByTopic: new Map(cur.videoByTopic),
+            twistByTopic: new Map(cur.twistByTopic),
+            tfByTopic: new Map(cur.tfByTopic),
+            done: true,
+          };
           stateRef.current = updated;
           setState(updated);
           console.info(
