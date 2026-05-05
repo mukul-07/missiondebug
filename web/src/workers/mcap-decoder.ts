@@ -9,12 +9,21 @@
 import { MessageReader } from "@foxglove/rosmsg2-serialization";
 import { parse as parseRos2Schema } from "@foxglove/rosmsg";
 import { McapStreamReader } from "@mcap/core";
+import { decompress as zstdDecompress } from "fzstd";
 import type {
   ChannelInfo,
   ChannelKind,
   WorkerInbound,
   WorkerOutbound,
 } from "./types";
+
+const decompressHandlers = {
+  zstd: (data: Uint8Array, decompressedSize: bigint) => {
+    const out = new Uint8Array(Number(decompressedSize));
+    zstdDecompress(data, out);
+    return out;
+  },
+};
 
 const ctx: DedicatedWorkerGlobalScope = self as unknown as DedicatedWorkerGlobalScope;
 
@@ -34,7 +43,7 @@ async function loadAndDecode(url: string): Promise<void> {
   const resp = await fetch(url);
   if (!resp.ok || !resp.body) throw new Error(`fetch failed: ${resp.status}`);
 
-  const reader = new McapStreamReader();
+  const reader = new McapStreamReader({ decompressHandlers });
   const schemasById = new Map<number, { name: string; encoding: string; data: Uint8Array }>();
   const channels = new Map<number, Channel>();
   const counts: Record<string, number> = {};
