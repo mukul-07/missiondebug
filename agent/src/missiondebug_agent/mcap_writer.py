@@ -37,22 +37,98 @@ def _topic_type_map(topics_config) -> dict[str, str]:
     return {t.name: t.type for t in topics_config}
 
 
-def _load_ros2_schema_text(type_str: str) -> str:
-    """Load the .msg definition text for a ROS 2 type.
+_PRIMITIVES = {
+    "bool", "byte", "char",
+    "int8", "uint8", "int16", "uint16", "int32", "uint32", "int64", "uint64",
+    "float32", "float64",
+    "string", "wstring",
+}
 
-    Tries rosidl_runtime_py.get_interface_path / get_message_interfaces;
-    falls back to scanning ament index. Raises if unavailable.
-    """
+
+def _msg_path(type_str: str) -> Path:
+    """type_str like 'sensor_msgs/msg/CompressedImage' -> path to .msg."""
     try:
         from rosidl_runtime_py import get_interface_path  # type: ignore
     except ImportError as e:
         raise RuntimeError(
             "rosidl_runtime_py not available — ROS 2 environment must be sourced"
         ) from e
+    return Path(get_interface_path(type_str))
 
-    # type_str like 'sensor_msgs/msg/CompressedImage'
-    path = get_interface_path(type_str)
-    return Path(path).read_text()
+
+def _load_ros2_schema_text(type_str: str) -> str:
+    """Concatenate the .msg text for a type and ALL transitively referenced
+    types, using the standard ROS multi-message schema format expected by
+    @foxglove/rosmsg and mcap_ros2:
+
+        <root .msg body>
+        ====...====
+        MSG: pkg/SubType
+        <sub .msg body>
+        ====...====
+        MSG: pkg/AnotherType
+        ...
+
+    This is required so the browser-side parser can deserialize messages
+    that nest other message types (Twist -> Vector3, TFMessage -> Transform,
+    etc.). Loading just the root .msg leaves the parser without enough info
+    and decoding silently produces empty output.
+    """
+    visited: dict[str, str] = {}
+
+    def normalize(t: str) -> str:
+        # 'pkg/Type' -> 'pkg/msg/Type' so get_interface_path resolves.
+        if t.count("/") == 1:
+            pkg, name = t.split("/")
+            return f"{pkg}/msg/{name}"
+        return t
+
+    def visit(t: str) -> None:
+        t = normalize(t)
+        if t in visited:
+            return
+        visited[t] = ""  # placeholder to break cycles
+        try:
+            text = _msg_path(t).read_text()
+        except Exception as e:
+            log.warning("Could not load schema for %s: %s", t, e)
+            return
+        visited[t] = text
+
+        pkg_of_t = t.split("/")[0]
+        for raw_line in text.splitlines():
+            line = raw_line.split("#", 1)[0].strip()
+            if not line:
+                continue
+            tokens = line.split()
+            if len(tokens) < 2:
+                continue
+            # Constant declaration: 'TYPE NAME = value'
+            if "=" in raw_line.split("#", 1)[0]:
+                continue
+            field_type = tokens[0]
+            # Strip array bound: 'Type[]', 'Type[N]', 'string<=10', etc.
+            field_type = field_type.split("[", 1)[0].split("<", 1)[0]
+            if field_type in _PRIMITIVES:
+                continue
+            if "/" in field_type:
+                visit(field_type)
+            else:
+                # Same-package implicit reference.
+                visit(f"{pkg_of_t}/msg/{field_type}")
+
+    visit(type_str)
+
+    root_key = normalize(type_str)
+    root_text = visited.pop(root_key, "")
+    parts = [root_text]
+    sep = "=" * 80
+    for tname, text in visited.items():
+        if not text:
+            continue
+        short = tname.replace("/msg/", "/")  # MSG: pkg/Type form
+        parts.append(f"{sep}\nMSG: {short}\n{text}")
+    return "\n".join(parts)
 
 
 def write_session(
