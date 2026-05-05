@@ -45,6 +45,20 @@ export function useMcapLoader(url: string | null): LoadedSession {
       { type: "module" },
     );
 
+    // Surface module-level errors that would otherwise hang "loading..." forever.
+    const onErr = (e: ErrorEvent) => {
+      const msg = `${e.message || "worker error"} (${e.filename}:${e.lineno})`;
+      console.error("MCAP worker error:", e);
+      const cur = stateRef.current;
+      const updated = { ...cur, error: msg, done: true };
+      stateRef.current = updated;
+      setState(updated);
+    };
+    worker.addEventListener("error", onErr);
+    worker.addEventListener("messageerror", (e) => {
+      console.error("MCAP worker messageerror:", e);
+    });
+
     worker.addEventListener("message", (ev: MessageEvent<WorkerOutbound>) => {
       const m = ev.data;
       const cur = stateRef.current;
