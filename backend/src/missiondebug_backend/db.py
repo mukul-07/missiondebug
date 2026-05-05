@@ -92,13 +92,30 @@ class Db:
             )
             conn.commit()
 
-    def list_sessions(self, *, limit: int = 50, offset: int = 0) -> list[SessionRow]:
+    def list_sessions(
+        self,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+        robot_id: str | None = None,
+    ) -> list[SessionRow]:
+        sql = "SELECT * FROM sessions"
+        params: list = []
+        if robot_id:
+            sql += " WHERE robot_id = ?"
+            params.append(robot_id)
+        sql += " ORDER BY started_at DESC LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
+        with self.connect() as conn:
+            cur = conn.execute(sql, params)
+            return [SessionRow.from_row(r) for r in cur.fetchall()]
+
+    def list_robot_ids(self) -> list[str]:
         with self.connect() as conn:
             cur = conn.execute(
-                "SELECT * FROM sessions ORDER BY started_at DESC LIMIT ? OFFSET ?",
-                (limit, offset),
+                "SELECT DISTINCT robot_id FROM sessions ORDER BY robot_id"
             )
-            return [SessionRow.from_row(r) for r in cur.fetchall()]
+            return [r["robot_id"] for r in cur.fetchall()]
 
     def get_session(self, session_id: str) -> SessionRow | None:
         with self.connect() as conn:

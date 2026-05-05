@@ -25,10 +25,14 @@ def get_router(get_db) -> APIRouter:
     def list_sessions(
         limit: int = Query(50, ge=1, le=200),
         offset: int = Query(0, ge=0),
+        robot_id: str | None = Query(None),
         db: Db = Depends(get_db),
     ):
-        rows = db.list_sessions(limit=limit, offset=offset)
-        return {"sessions": [_serialize(r) for r in rows]}
+        rows = db.list_sessions(limit=limit, offset=offset, robot_id=robot_id)
+        return {
+            "sessions": [_serialize(r) for r in rows],
+            "robots": db.list_robot_ids(),
+        }
 
     @router.get("/{session_id}")
     def get_session(session_id: str, db: Db = Depends(get_db)):

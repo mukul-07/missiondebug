@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { listSessions, type SessionSummary } from "../api/sessions";
 import { Card } from "./ui/Card";
 
@@ -16,45 +16,91 @@ function fmtDuration(ms: number): string {
 }
 
 export function SessionList() {
+  const [params, setParams] = useSearchParams();
+  const robotFilter = params.get("robot");
+
   const { data, isLoading, error } = useQuery({
-    queryKey: ["sessions"],
-    queryFn: listSessions,
+    queryKey: ["sessions", robotFilter],
+    queryFn: () => listSessions(robotFilter),
     refetchInterval: 5_000,
   });
 
   if (isLoading) return <div className="p-4 text-muted">Loading…</div>;
   if (error) return <div className="p-4 text-accent">Error: {String(error)}</div>;
-  if (!data || data.length === 0)
-    return (
-      <div className="p-6 text-muted">
-        No sessions yet. Start the agent and POST to <code>/sessions/save</code> or
-        wait for an anomaly.
-      </div>
-    );
+
+  const sessions = data?.sessions ?? [];
+  const robots = data?.robots ?? [];
+
+  const setRobot = (r: string | null) => {
+    if (r) params.set("robot", r);
+    else params.delete("robot");
+    setParams(params, { replace: true });
+  };
 
   return (
     <div className="p-4 grid gap-2 max-w-3xl">
-      <h2 className="text-lg">Sessions</h2>
-      {data.map((s: SessionSummary) => (
-        <Link key={s.id} to={`/sessions/${encodeURIComponent(s.id)}`}>
-          <Card className="hover:border-accent cursor-pointer">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="font-mono text-sm">{s.id}</div>
-                <div className="text-xs text-muted">
-                  {s.robot_id} · {relativeTime(s.started_at)} · {fmtDuration(s.duration_ms)}
-                  {s.label ? (
-                    <span className="ml-2 px-2 py-0.5 rounded bg-accent/20 text-accent">
-                      {s.label}
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg">Sessions</h2>
+        {robots.length > 0 && (
+          <div className="flex gap-1 text-xs">
+            <button
+              onClick={() => setRobot(null)}
+              className={`px-2 py-0.5 rounded border ${
+                !robotFilter
+                  ? "bg-accent/20 text-accent border-accent"
+                  : "border-border text-muted hover:text-text"
+              }`}
+            >
+              all
+            </button>
+            {robots.map((r) => (
+              <button
+                key={r}
+                onClick={() => setRobot(r)}
+                className={`px-2 py-0.5 rounded border font-mono ${
+                  robotFilter === r
+                    ? "bg-accent/20 text-accent border-accent"
+                    : "border-border text-muted hover:text-text"
+                }`}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {sessions.length === 0 ? (
+        <div className="text-muted text-sm">
+          {robotFilter
+            ? `No sessions for robot "${robotFilter}".`
+            : "No sessions yet. Start the agent and POST to /sessions/save or wait for an anomaly."}
+        </div>
+      ) : (
+        sessions.map((s: SessionSummary) => (
+          <Link key={s.id} to={`/sessions/${encodeURIComponent(s.id)}`}>
+            <Card className="hover:border-accent cursor-pointer">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="font-mono text-sm">{s.id}</div>
+                  <div className="text-xs text-muted">
+                    <span className="px-1.5 py-0.5 mr-2 rounded bg-bg border border-border font-mono">
+                      {s.robot_id}
                     </span>
-                  ) : null}
+                    {relativeTime(s.started_at)} · {fmtDuration(s.duration_ms)}
+                    {s.label ? (
+                      <span className="ml-2 px-2 py-0.5 rounded bg-accent/20 text-accent">
+                        {s.label}
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
+                <div className="text-xs text-muted">{s.topics.length} topics</div>
               </div>
-              <div className="text-xs text-muted">{s.topics.length} topics</div>
-            </div>
-          </Card>
-        </Link>
-      ))}
+            </Card>
+          </Link>
+        ))
+      )}
     </div>
   );
 }

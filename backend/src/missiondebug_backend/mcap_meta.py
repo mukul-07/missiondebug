@@ -1,7 +1,7 @@
 """Extract minimal session metadata from an MCAP file.
 
-We use mcap.reader to read the summary section. start_time and end_time
-are nanoseconds (per the MCAP spec); we convert to unix ms for the DB.
+Reads the summary section for time/topic info, then iterates metadata
+records to find MissionDebug's `missiondebug` block (robot_id, label).
 """
 
 from __future__ import annotations
@@ -19,6 +19,8 @@ class McapMeta:
     duration_ms: int
     topics: list[str]
     size_bytes: int
+    robot_id: str | None
+    label: str | None
 
 
 def extract(path: Path) -> McapMeta:
@@ -36,6 +38,19 @@ def extract(path: Path) -> McapMeta:
         start_ns = stats.message_start_time
         end_ns = stats.message_end_time
 
+        robot_id: str | None = None
+        label: str | None = None
+        try:
+            for record in reader.iter_metadata():
+                if record.name == "missiondebug":
+                    robot_id = record.metadata.get("robot_id") or robot_id
+                    lab = record.metadata.get("label")
+                    if lab:
+                        label = lab
+        except Exception:
+            # Older files written without metadata records — fine, fall back to filename.
+            pass
+
     started_ms = start_ns // 1_000_000
     ended_ms = end_ns // 1_000_000
     return McapMeta(
@@ -44,4 +59,6 @@ def extract(path: Path) -> McapMeta:
         duration_ms=max(0, ended_ms - started_ms),
         topics=topics,
         size_bytes=size,
+        robot_id=robot_id,
+        label=label,
     )

@@ -10,11 +10,19 @@ export interface SessionSummary {
   created_at: number;
 }
 
-export async function listSessions(): Promise<SessionSummary[]> {
-  const r = await fetch("/api/sessions");
+export interface SessionListResult {
+  sessions: SessionSummary[];
+  robots: string[];
+}
+
+export async function listSessions(robotId?: string | null): Promise<SessionListResult> {
+  const url = robotId
+    ? `/api/sessions?robot_id=${encodeURIComponent(robotId)}`
+    : "/api/sessions";
+  const r = await fetch(url);
   if (!r.ok) throw new Error(`listSessions: ${r.status}`);
   const j = await r.json();
-  return j.sessions;
+  return { sessions: j.sessions, robots: j.robots ?? [] };
 }
 
 export async function getSession(id: string): Promise<SessionSummary> {

@@ -29,9 +29,14 @@ def scan_directory(sessions_dir: Path, db: Db, robot_id_default: str = "robot-00
             log.exception("Failed to extract metadata from %s", mcap)
             continue
 
-        # Filename convention: {robot_id}_{iso8601}.mcap
         stem = mcap.stem
-        robot_id = stem.split("_", 1)[0] if "_" in stem else robot_id_default
+        # Prefer robot_id from MCAP metadata; fall back to filename convention.
+        if meta.robot_id:
+            robot_id = meta.robot_id
+        elif "_" in stem:
+            robot_id = stem.split("_", 1)[0]
+        else:
+            robot_id = robot_id_default
 
         row = SessionRow(
             id=stem,
@@ -39,7 +44,7 @@ def scan_directory(sessions_dir: Path, db: Db, robot_id_default: str = "robot-00
             started_at=meta.started_at_ms,
             ended_at=meta.ended_at_ms,
             duration_ms=meta.duration_ms,
-            label=None,  # v0: agent doesn't yet sidecar labels into MCAP metadata
+            label=meta.label,
             mcap_path=path_str,
             mcap_size_bytes=meta.size_bytes,
             topics=meta.topics,

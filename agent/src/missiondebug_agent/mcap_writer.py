@@ -83,6 +83,16 @@ def write_session(
         writer = Writer(f)
         writer.start(profile="ros2", library="missiondebug-agent")
 
+        # File-level metadata so the backend can identify the robot
+        # without parsing the filename.
+        writer.add_metadata(
+            name="missiondebug",
+            data={
+                "robot_id": robot_id,
+                "label": label or "",
+            },
+        )
+
         # Register one schema + channel per topic encountered.
         channel_for: dict[str, int] = {}
         for item in items:
