@@ -2,7 +2,7 @@
 name = "missiondebug-agent"
 version = "0.0.0"
 description = "MissionDebug v0 ROS 2 agent: ring buffer, MCAP writer, anomaly detector, control API."
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 dependencies = [
   "fastapi>=0.115",
   "uvicorn[standard]>=0.30",
