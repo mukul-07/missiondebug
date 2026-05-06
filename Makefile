@@ -9,8 +9,8 @@ dev:
 	bash scripts/dev.sh
 
 test:
-	cd agent && pytest -q
-	cd backend && pytest -q
+	cd agent && .venv/bin/pytest -q
+	cd backend && .venv/bin/pytest -q
 
 fmt:
 	cd agent && ruff format .
