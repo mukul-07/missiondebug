@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef } from "react";
-import { useParams } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { listAnnotations } from "../api/annotations";
 import { getSession, mcapUrl } from "../api/sessions";
@@ -36,6 +36,50 @@ export function SessionDetail() {
       setDuration(loaded.startNs, loaded.endNs - loaded.startNs);
     }
   }, [loaded.startNs, loaded.endNs, setDuration]);
+
+  // ---------- shareable ?t= deep link ----------
+  const [searchParams] = useSearchParams();
+  const initialTimeApplied = useRef(false);
+  // Apply ?t=<seconds> ONCE, after duration is known.
+  useEffect(() => {
+    if (initialTimeApplied.current) return;
+    if (durationNs <= 0n) return;
+    const tParam = searchParams.get("t");
+    if (tParam === null) {
+      initialTimeApplied.current = true;
+      return;
+    }
+    const seconds = Number(tParam);
+    if (Number.isFinite(seconds) && seconds >= 0) {
+      const ns = BigInt(Math.round(seconds * 1e9));
+      setTime(ns);
+    }
+    initialTimeApplied.current = true;
+  }, [durationNs, searchParams, setTime]);
+
+  // Debounced URL sync as the playhead moves.
+  useEffect(() => {
+    if (!initialTimeApplied.current || durationNs <= 0n) return;
+    const handle = window.setTimeout(() => {
+      const seconds = Number(currentTimeNs) / 1e9;
+      const url = new URL(window.location.href);
+      url.searchParams.set("t", seconds.toFixed(2));
+      window.history.replaceState({}, "", url.toString());
+    }, 250);
+    return () => window.clearTimeout(handle);
+  }, [currentTimeNs, durationNs]);
+
+  // Copy link state.
+  const [copied, setCopied] = useState(false);
+  const onCopyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch (e) {
+      console.error("clipboard write failed", e);
+    }
+  };
 
   // Playback rAF loop.
   const lastTsRef = useRef<number | null>(null);
@@ -154,6 +198,9 @@ export function SessionDetail() {
         <span className="text-xs text-muted font-mono">
           {(Number(currentTimeNs) / 1e9).toFixed(2)} / {(Number(durationNs) / 1e9).toFixed(2)} s
         </span>
+        <Button variant="ghost" onClick={onCopyLink} className="text-xs ml-auto">
+          {copied ? "✓ Link copied" : "Copy link"}
+        </Button>
       </div>
 
       {id ? <AnnotationsPanel sessionId={id} /> : null}
