@@ -3,6 +3,9 @@ Description=MissionDebug ROS 2 agent
 Documentation=https://github.com/mukul-07/missiondebug
 After=network-online.target
 Wants=network-online.target
+# Rate-limit restarts: at most 5 starts per 60s (these belong in [Unit]).
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -16,8 +19,6 @@ ExecStart=/opt/missiondebug/bin/missiondebug-agent --config /etc/missiondebug/co
 
 Restart=on-failure
 RestartSec=5
-StartLimitIntervalSec=60
-StartLimitBurst=5
 
 # Hardening — agent is read-mostly + writes MCAPs to /var/lib/missiondebug/sessions.
 NoNewPrivileges=true
