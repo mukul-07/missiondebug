@@ -11,6 +11,9 @@ from pydantic import BaseModel, Field
 class TopicConfig(BaseModel):
     name: str
     type: str
+    # v1.5: per-topic capture controls. Defaults preserve v1 behavior.
+    rate_divisor: int = Field(default=1, ge=1)  # keep every Nth message; 1 = all
+    ring_seconds: float | None = None             # None = use global buffer_seconds
 
 
 class StallConfig(BaseModel):
@@ -50,6 +53,10 @@ class AnomalyConfig(BaseModel):
 class AgentConfig(BaseModel):
     robot_id: str = "robot-001"
     buffer_seconds: float = Field(default=60.0, gt=0)
+    # v1.5: optional global RAM cap across all topic buffers (bytes).
+    # When exceeded, oldest entries across all topics drop until under cap.
+    # None = no global cap (rely on per-topic windows alone).
+    max_total_bytes: int | None = Field(default=None, ge=0)
     topics: list[TopicConfig]
     output_dir: str = "./sessions"
     http_host: str = "127.0.0.1"

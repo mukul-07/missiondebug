@@ -16,6 +16,7 @@ import time
 from typing import Callable
 
 from .config import AgentConfig, TopicConfig
+from .rate_limiter import RateLimiter
 from .ring_buffer import BufferedMessage, RingBuffer
 
 log = logging.getLogger(__name__)
@@ -53,6 +54,12 @@ class RosBridge:
         self._config = config
         # topic name -> callback(msg, ts_ns). Topic must be in `config.topics`.
         self._callbacks: dict[str, Callable] = message_callbacks or {}
+        self._rate_limiter = RateLimiter()
+        # Pre-register per-topic windows on the buffer so first-message latency
+        # doesn't pay for it.
+        for topic in config.topics:
+            if topic.ring_seconds is not None:
+                buffer.configure_topic(topic.name, topic.ring_seconds)
 
         if not rclpy.ok():
             rclpy.init()
@@ -65,8 +72,16 @@ class RosBridge:
     def _subscribe(self, topic: TopicConfig) -> None:
         msg_cls = _resolve_msg_type(topic.type)
         cb_for_topic = self._callbacks.get(topic.name)
+        divisor = topic.rate_divisor
 
-        def cb(msg, _topic_name=topic.name, _user_cb=cb_for_topic):
+        def cb(
+            msg,
+            _topic_name=topic.name,
+            _user_cb=cb_for_topic,
+            _divisor=divisor,
+        ):
+            if not self._rate_limiter.should_keep(_topic_name, _divisor):
+                return
             try:
                 payload = self._serialize(msg)
                 ts = time.monotonic_ns()
@@ -86,7 +101,9 @@ class RosBridge:
 
         sub = self._node.create_subscription(msg_cls, topic.name, cb, 10)
         self._subs.append(sub)
-        log.info("Subscribed to %s [%s]", topic.name, topic.type)
+        rate_note = f", every {divisor}th" if divisor > 1 else ""
+        ring_note = f", ring={topic.ring_seconds}s" if topic.ring_seconds else ""
+        log.info("Subscribed to %s [%s]%s%s", topic.name, topic.type, rate_note, ring_note)
 
     def spin(self) -> None:
         """Blocks until shutdown."""

@@ -57,7 +57,10 @@ def main() -> None:
     config = AgentConfig.load(args.config)
     Path(config.output_dir).mkdir(parents=True, exist_ok=True)
 
-    ring = RingBuffer(window_seconds=config.buffer_seconds)
+    ring = RingBuffer(
+        window_seconds=config.buffer_seconds,
+        max_total_bytes=config.max_total_bytes,
+    )
     app = build_app(config, ring)
 
     callbacks: dict = {}

@@ -1,0 +1,191 @@
+# MissionDebug agent config — autonomous forklift example
+#
+# Source: a real fleet's bag_manager_config.yaml (~70 topics across 6
+# domains: locomotion, pose, planning, sensing, behavior, hardware).
+#
+# This file demonstrates the **tiered subscription strategy**:
+#   Tier 1 — always capture, full rate (cheap; explains "what was the robot doing")
+#   Tier 2 — capture sub-sampled (expensive bytes; needs v1.5 rate_divisor)
+#   Tier 3 — DELIBERATELY SKIPPED (let the bag-manager handle these)
+#
+# Everything in Tier 3 is commented out, with a one-line "why skipped" note.
+# Uncomment any of them if a debug case proves you need them.
+#
+# Verify each topic's type on the robot before subscribing:
+#   ros2 topic info <topic_name>
+#
+# Restart the agent after editing:
+#   sudo systemctl restart missiondebug-agent
+
+robot_id: "forklift-001"
+buffer_seconds: 60
+output_dir: "/var/lib/missiondebug/sessions"
+http_host: "127.0.0.1"
+http_port: 7000
+
+topics:
+  # ============================================================
+  # TIER 1 — always capture, full rate. Tiny, high signal.
+  # ============================================================
+
+  # --- Locomotion: what the robot was commanded to do
+  - { name: "/forklift-001/fl_base_controller/cmd_vel",  type: "geometry_msgs/msg/Twist" }
+  - { name: "/forklift-001/nav/cmd_vel",                 type: "geometry_msgs/msg/Twist" }
+  - { name: "/forklift-001/dock/cmd_vel",                type: "geometry_msgs/msg/Twist" }
+  - { name: "/forklift-001/fl_base_controller/odom",     type: "nav_msgs/msg/Odometry" }
+
+  # --- Pose: where the robot was
+  - { name: "/tf",                                     type: "tf2_msgs/msg/TFMessage" }
+  - { name: "/static_tf",                              type: "tf2_msgs/msg/TFMessage" }
+  - { name: "/forklift-001/lookahead_pose",              type: "geometry_msgs/msg/PoseStamped" }
+
+  # --- Behavior: what state the robot believed it was in
+  - { name: "/forklift-001/robot_state",                 type: "std_msgs/msg/String" }
+  - { name: "/forklift-001/robot_state_fms",             type: "std_msgs/msg/String" }
+  - { name: "/forklift-001/task_status",                 type: "std_msgs/msg/String" }
+  - { name: "/forklift-001/vda_state",                   type: "std_msgs/msg/String" }
+
+  # --- Planning: what it intended to do, what happened
+  - { name: "/plan_traj",                              type: "nav_msgs/msg/Path" }
+  - { name: "/forklift-001/move_base/current_goal",      type: "geometry_msgs/msg/PoseStamped" }
+  - { name: "/forklift-001/move_base/result",            type: "move_base_msgs/msg/MoveBaseActionResult" }
+  - { name: "/forklift-001/move_base/status",            type: "actionlib_msgs/msg/GoalStatusArray" }
+  - { name: "/forklift-001/pruned_path",                 type: "nav_msgs/msg/Path" }
+  - { name: "/start_pose",                             type: "geometry_msgs/msg/PoseStamped" }
+  - { name: "/end_pose",                               type: "geometry_msgs/msg/PoseStamped" }
+
+  # --- Docking: subtree-specific, helpful when grasping/handling fails
+  - { name: "/forklift-001/fl_auto_dock/result",         type: "actionlib_msgs/msg/GoalStatusArray" }
+  - { name: "/forklift-001/fl_auto_dock/status",         type: "actionlib_msgs/msg/GoalStatusArray" }
+  - { name: "/forklift-001/fl_auto_dock/goal",           type: "geometry_msgs/msg/PoseStamped" }
+  - { name: "/forklift-001/dock/start",                  type: "std_msgs/msg/Bool" }
+  - { name: "/forklift-001/dock/lookahead_pose",         type: "geometry_msgs/msg/PoseStamped" }
+
+  # --- Safety + warnings: most actionable for after-the-fact debug
+  - { name: "/forklift-001/active_warnings",             type: "std_msgs/msg/String" }
+  - { name: "/forklift-001/lidar_safety_status",         type: "std_msgs/msg/Bool" }
+  - { name: "/forklift-001/obstacle_stopper/status",     type: "std_msgs/msg/Bool" }
+  - { name: "/forklift-001/zones",                       type: "std_msgs/msg/String" }
+
+  # --- Battery + diagnostics
+  - { name: "/forklift-001/bms_feedback",                type: "sensor_msgs/msg/BatteryState" }
+  - { name: "/forklift-001/bms_diagnostics",             type: "diagnostic_msgs/msg/DiagnosticArray" }
+  - { name: "/forklift-001/robot_diagnostics",           type: "diagnostic_msgs/msg/DiagnosticArray" }
+
+  # --- Fork / motor / control state (fork-specific failure modes)
+  - { name: "/forklift-001/motor_feedback",              type: "diagnostic_msgs/msg/DiagnosticArray" }
+  - { name: "/forklift-001/fork_control",                type: "std_msgs/msg/String" }
+  - { name: "/forklift-001/fork_feedback",               type: "std_msgs/msg/String" }
+
+  # --- Localization corrections from AprilTags
+  - { name: "/april_pose_array",                       type: "geometry_msgs/msg/PoseArray" }
+  - { name: "/forklift-001/tag_detections",              type: "std_msgs/msg/String" }
+
+  # ============================================================
+  # TIER 2 — capture sub-sampled. Big payloads, but useful for
+  # eyes-on debug. Needs v1.5 rate_divisor / ring_seconds.
+  # In v1.0, including these uses a lot of RAM — skip for now.
+  # ============================================================
+
+  - { name: "/forklift-001/scan_filtered",               type: "sensor_msgs/msg/LaserScan" }
+  # v1.5: rate_divisor: 5  (10 Hz -> 2 Hz)
+  #       ring_seconds: 30
+
+  # Camera (uncomment if your forklift has one):
+  # - { name: "/forklift-001/front_camera/image_raw/compressed",
+  #     type: "sensor_msgs/msg/CompressedImage" }
+  #   v1.5: rate_divisor: 6  (30 fps -> 5 fps)
+
+  # ============================================================
+  # TIER 3 — DELIBERATELY SKIPPED.
+  # The bag-manager keeps these in 300s rolling bags. If a debug case
+  # needs them, open the bag-manager file in Foxglove. MissionDebug
+  # is the focused layer; this is the deep archive.
+  # ============================================================
+
+  # /VM/Point_cloud            # huge, 10 Hz; rarely the answer in debug
+  # /VM/Point_cloud_clustered  # ditto
+  # /VM/Point_cloud_crop       # ditto
+  # /forklift-001/move_base/local_costmap/costmap  # 100s of KB per msg
+  # /forklift-001/joint_states   # 100 Hz, mostly noise unless arm-debug
+  # /forklift-001/scan3_raw      # raw lidar; use scan_filtered instead
+  # /VM/visualization_marker   # debug-only RViz markers
+  # /VM/v_pose_array           # internal viz topic
+  # /rosout                    # log spam, separate retention concern
+  # /monitoring                # high-rate operations metrics
+
+  # ============================================================
+  # Hardware feedback streams — CASE-BY-CASE.
+  # Skip unless you have an open bug touching that subsystem.
+  # ============================================================
+
+  # /forklift-001/PLC_feedback
+  # /forklift-001/hw_osmo40_feedback
+  # /forklift-001/hw_F2A_status_Feedback
+  # /forklift-001/hw_F2A_Motor_Feedback
+  # /forklift-001/hw_F2A_System_Feedback
+  # /forklift-001/hw_F2A_213_Control
+  # /forklift-001/hw_F2A_313_Control
+  # /forklift-001/indication_feedback
+  # /forklift-001/indication_control
+  # /forklift-001/logic_board_status
+  # /forklift-001/logic_board_control
+  # /forklift-001/motor_diagnostics
+  # /forklift-001/motor_control
+  # /forklift-001/fork_diagnostics
+  # /forklift-001/rear_lidar/obstacle_fields
+
+# ============================================================
+# Anomaly detectors
+# v1.0: hardcoded stall + path_deviation only
+# v1.5: rule-based detectors (commented examples below)
+# ============================================================
+anomaly:
+  stall:
+    velocity_threshold: 0.01
+    duration_seconds: 5.0
+    cooldown_seconds: 30.0
+
+  path_deviation:
+    threshold_meters: 0.5
+    duration_seconds: 2.0
+    cooldown_seconds: 30.0
+    plan_topic: "/plan_traj"
+    pose_topic: "/tf"
+    pose_child_frame: "base_link"
+
+  # rules: (v1.5 — config-driven detectors)
+  #   - name: fsm-error
+  #     topic: /forklift-001/robot_state_fms
+  #     field: data
+  #     equals: "error"
+  #     duration_seconds: 40
+  #     cooldown_seconds: 60
+  #
+  #   - name: low-battery
+  #     topic: /forklift-001/bms_feedback
+  #     field: percentage
+  #     lt: 0.20
+  #     duration_seconds: 5
+  #     cooldown_seconds: 600
+  #
+  #   - name: lidar-safety-tripped
+  #     topic: /forklift-001/lidar_safety_status
+  #     field: data
+  #     equals: true
+  #     duration_seconds: 0
+  #     cooldown_seconds: 30
+  #
+  #   - name: nav-aborted
+  #     topic: /forklift-001/move_base/result
+  #     field: status.status
+  #     equals: 4              # actionlib ABORTED
+  #     duration_seconds: 0
+  #     cooldown_seconds: 30
+  #
+  #   - name: warnings-active
+  #     topic: /forklift-001/active_warnings
+  #     field: data
+  #     not_equals: ""
+  #     duration_seconds: 10
+  #     cooldown_seconds: 60
