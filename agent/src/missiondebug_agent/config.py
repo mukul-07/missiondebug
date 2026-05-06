@@ -69,10 +69,39 @@ class RuleConfig(BaseModel):
         return self
 
 
+class TopicDropoutConfig(BaseModel):
+    """Watch a topic and fire when no message arrives for `silence_seconds`."""
+    topic: str
+    silence_seconds: float = Field(gt=0)
+    cooldown_seconds: float = Field(default=60.0, ge=0)
+    name: str | None = None  # defaults to "dropout:<topic>" if omitted
+
+
+class BatteryLowConfig(BaseModel):
+    """Convenience wrapper that desugars to a numeric_threshold rule on
+    a BatteryState topic. Just nicer config syntax than writing a raw rule."""
+    topic: str
+    threshold: float = 0.20  # 20% by default
+    field: str = "percentage"  # BatteryState.percentage; override for custom msgs
+    duration_seconds: float = Field(default=5.0, ge=0)
+    cooldown_seconds: float = Field(default=600.0, ge=0)  # 10 min — not urgent
+    name: str = "battery_low"
+
+
 class AnomalyConfig(BaseModel):
     stall: StallConfig = StallConfig()
     path_deviation: PathDeviationConfig | None = None  # opt-in for v1
     rules: list[RuleConfig] = Field(default_factory=list)  # v1.5
+    topic_dropout: list[TopicDropoutConfig] = Field(default_factory=list)  # v1.5
+    battery_low: BatteryLowConfig | None = None  # v1.5
+
+    def all_rules(self) -> list[RuleConfig]:
+        """rules + auto-generated rules from convenience configs (battery_low)."""
+        out = list(self.rules)
+        if self.battery_low is not None:
+            from .detectors.battery_low import to_rule
+            out.append(to_rule(self.battery_low))
+        return out
 
     # Backward-compat for v0 flat schema, in case anyone is still on it.
     stall_velocity_threshold: float | None = None

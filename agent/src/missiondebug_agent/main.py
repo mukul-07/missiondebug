@@ -15,6 +15,7 @@ from .config import AgentConfig
 from .detectors.from_config import RuleAnomaly, RuleEngine
 from .detectors.path_deviation import PathDeviationAnomaly, PathDeviationDetector
 from .detectors.stall import StallAnomaly, StallDetector
+from .detectors.topic_dropout import DropoutAnomaly, TopicDropoutDetector
 from .http_api import build_app, save_now
 from .ring_buffer import RingBuffer
 
@@ -140,7 +141,9 @@ def main() -> None:
         add_cb(pd_cfg.pose_topic, on_pose)
 
     # ---------- Config-driven rule engine (v1.5) ----------
-    rule_cfgs = config.anomaly.rules
+    # all_rules() folds in convenience-detector configs (battery_low) by
+    # converting them to plain RuleConfigs.
+    rule_cfgs = config.anomaly.all_rules()
     if rule_cfgs:
         def on_rule_anomaly(a: RuleAnomaly) -> None:
             label = f"anomaly:{a.name}"
@@ -164,6 +167,32 @@ def main() -> None:
 
         log.info("Loaded %d config-driven rule(s)", len(rule_cfgs))
 
+    # ---------- Topic-dropout detector (v1.5) ----------
+    dropout_cfgs = config.anomaly.topic_dropout
+    dropout_detector: TopicDropoutDetector | None = None
+    if dropout_cfgs:
+        def on_dropout(a: DropoutAnomaly) -> None:
+            log.info("Auto-saving session: dropout on %s", a.topic)
+            try:
+                r = save_now(config, ring, label=f"anomaly:{a.name}")
+                log.info("Auto-saved %s (%.2fs, silence %.2fs)",
+                         r.session_id, r.duration_s, a.silence_ns / 1e9)
+            except Exception:
+                log.exception("Auto-save failed (dropout %s)", a.topic)
+
+        dropout_detector = TopicDropoutDetector(dropout_cfgs, on_anomaly=on_dropout)
+
+        def make_dropout_cb(detector: TopicDropoutDetector, t: str):
+            def cb(_msg, ts_ns: int) -> None:
+                detector.saw(t, ts_ns)
+            return cb
+
+        for topic_name in dropout_detector.topics:
+            add_cb(topic_name, make_dropout_cb(dropout_detector, topic_name))
+
+        dropout_detector.start()
+        log.info("Watching %d topic(s) for dropout", len(dropout_cfgs))
+
     # ---------- ROS bridge ----------
     from .ros_bridge import RosBridge
 
@@ -185,6 +214,8 @@ def main() -> None:
             app, host=config.http_host, port=config.http_port, log_level="info"
         )
     finally:
+        if dropout_detector is not None:
+            dropout_detector.stop()
         bridge.shutdown()
 
 
