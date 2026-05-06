@@ -32,6 +32,7 @@ try:
     from rclpy.serialization import serialize_message
     from geometry_msgs.msg import PoseStamped, TransformStamped, Twist
     from nav_msgs.msg import Path as PathMsg
+    from sensor_msgs.msg import CompressedImage
     from tf2_msgs.msg import TFMessage
 except ImportError as e:
     print(
@@ -43,8 +44,83 @@ except ImportError as e:
     )
     sys.exit(1)
 
+# PIL is optional. If absent, we skip the camera streams and only ship
+# /cmd_vel /tf /plan in the fixture.
+try:
+    import io
+    from PIL import Image, ImageDraw  # type: ignore
+    HAVE_PIL = True
+except ImportError:
+    HAVE_PIL = False
+    print(
+        "Note: Pillow not installed; skipping fake camera frames.\n"
+        "      Install with: pip install pillow  (in the agent venv)\n"
+        "      Then re-run to include video tracks in the fixture.",
+        file=sys.stderr,
+    )
+
 from missiondebug_agent.mcap_writer import write_session  # noqa: E402
 from missiondebug_agent.ring_buffer import BufferedMessage  # noqa: E402
+
+
+# ---------- fake camera frame generator ----------
+
+# 320x180 keeps individual JPEGs ~3 KB each.
+FRAME_W, FRAME_H = 320, 180
+# x of 0..15m (the planned path) maps across the canvas.
+PATH_MAX_X = 15.0
+
+
+def make_frame_jpeg(label: str, bg_rgb, t_s: float, pose_x: float, pose_y: float) -> bytes:
+    img = Image.new("RGB", (FRAME_W, FRAME_H), bg_rgb)
+    draw = ImageDraw.Draw(img)
+
+    # Top bar with text.
+    draw.rectangle([0, 0, FRAME_W, 26], fill=(0, 0, 0))
+    text = f"{label}  t={t_s:5.2f}s  x={pose_x:5.2f}  y={pose_y:+.2f}"
+    draw.text((6, 5), text, fill=(255, 255, 255))
+
+    # Horizon line.
+    horizon_y = 110
+    draw.line([(0, horizon_y), (FRAME_W, horizon_y)], fill=(80, 80, 100), width=1)
+
+    # Planned path: thin straight line at the horizon's y level.
+    plan_y = horizon_y + 30
+    draw.line([(20, plan_y), (FRAME_W - 20, plan_y)], fill=(80, 130, 80), width=2)
+
+    # Robot indicator: orange circle that walks along the path with x,
+    # bumps off-line vertically with y. y=0 is on the line; y=+1 lifts it.
+    cx = int(20 + min(1.0, pose_x / PATH_MAX_X) * (FRAME_W - 40))
+    cy = plan_y + int(-pose_y * 30)
+    draw.ellipse([cx - 8, cy - 8, cx + 8, cy + 8], fill=(255, 140, 0), outline=(0, 0, 0))
+
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=70)
+    return buf.getvalue()
+
+
+def append_camera_frame(
+    items: list,
+    topic: str,
+    label: str,
+    bg_rgb,
+    t_s: float,
+    ts_ns: int,
+    wall_ns: int,
+    pose_x: float,
+    pose_y: float,
+) -> None:
+    img_msg = CompressedImage()
+    img_msg.format = "jpeg"
+    img_msg.data = make_frame_jpeg(label, bg_rgb, t_s, pose_x, pose_y)
+    items.append(
+        BufferedMessage(
+            timestamp_ns=ts_ns,
+            wall_ns=wall_ns,
+            topic=topic,
+            payload=serialize_message(img_msg),
+        )
+    )
 
 
 def main() -> None:
@@ -126,17 +202,33 @@ def main() -> None:
             )
         )
 
+        # Camera frames at 5 fps (every other 10 Hz tick).
+        if HAVE_PIL and i % 2 == 0:
+            append_camera_frame(
+                items, "/front_camera/image_raw/compressed", "FRONT CAM",
+                (35, 45, 65), t_s, ts_ns, wall_ns, pose_x, pose_y,
+            )
+            append_camera_frame(
+                items, "/rear_camera/image_raw/compressed", "REAR CAM",
+                (60, 40, 40), t_s, ts_ns, wall_ns, pose_x, pose_y,
+            )
+
+    topic_types = {
+        "/cmd_vel": "geometry_msgs/msg/Twist",
+        "/tf": "tf2_msgs/msg/TFMessage",
+        "/plan": "nav_msgs/msg/Path",
+    }
+    if HAVE_PIL:
+        topic_types["/front_camera/image_raw/compressed"] = "sensor_msgs/msg/CompressedImage"
+        topic_types["/rear_camera/image_raw/compressed"] = "sensor_msgs/msg/CompressedImage"
+
     out = ROOT / "fixtures" / "sample_drive.mcap"
     out.parent.mkdir(parents=True, exist_ok=True)
     meta = write_session(
         items,
         out,
         robot_id="fixture-robot",
-        topic_types={
-            "/cmd_vel": "geometry_msgs/msg/Twist",
-            "/tf": "tf2_msgs/msg/TFMessage",
-            "/plan": "nav_msgs/msg/Path",
-        },
+        topic_types=topic_types,
         label="fixture:demo-drive",
     )
     print(
