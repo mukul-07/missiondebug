@@ -95,7 +95,14 @@ export function SessionList() {
                     ) : null}
                   </div>
                 </div>
-                <div className="text-xs text-muted">{s.topics.length} topics</div>
+                <div className="text-xs text-muted flex items-center gap-2">
+                  {s.annotation_count && s.annotation_count > 0 ? (
+                    <span className="px-1.5 py-0.5 rounded bg-bg border border-border">
+                      📝 {s.annotation_count}
+                    </span>
+                  ) : null}
+                  {s.topics.length} topics
+                </div>
               </div>
             </Card>
           </Link>

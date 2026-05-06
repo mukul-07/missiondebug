@@ -29,8 +29,12 @@ def get_router(get_db) -> APIRouter:
         db: Db = Depends(get_db),
     ):
         rows = db.list_sessions(limit=limit, offset=offset, robot_id=robot_id)
+        counts = db.annotation_counts()
         return {
-            "sessions": [_serialize(r) for r in rows],
+            "sessions": [
+                {**_serialize(r), "annotation_count": counts.get(r.id, 0)}
+                for r in rows
+            ],
             "robots": db.list_robot_ids(),
         }
 
@@ -39,6 +43,7 @@ def get_router(get_db) -> APIRouter:
         row = db.get_session(session_id)
         if row is None:
             raise HTTPException(404, "session not found")
-        return _serialize(row)
+        counts = db.annotation_counts()
+        return {**_serialize(row), "annotation_count": counts.get(row.id, 0)}
 
     return router

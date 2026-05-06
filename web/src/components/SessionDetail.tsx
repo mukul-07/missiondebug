@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import { listAnnotations } from "../api/annotations";
 import { getSession, mcapUrl } from "../api/sessions";
 import { useMcapLoader } from "../hooks/useMcapLoader";
 import { usePlayback } from "../stores/playback";
+import { AnnotationsPanel } from "./AnnotationsPanel";
 import { Timeline } from "./timeline/Timeline";
 import { TrackVideo } from "./timeline/TrackVideo";
 import { TrackPose } from "./timeline/TrackPose";
@@ -95,6 +97,16 @@ export function SessionDetail() {
 
   const primaryTwist = twistTopics[0] ? loaded.twistByTopic.get(twistTopics[0]) ?? [] : [];
 
+  const { data: annotations = [] } = useQuery({
+    queryKey: ["annotations", id],
+    queryFn: () => listAnnotations(id!),
+    enabled: !!id,
+  });
+  const timelineAnnotations = useMemo(
+    () => annotations.map((a) => ({ id: a.id, timeNs: a.time_ns, body: a.body })),
+    [annotations],
+  );
+
   return (
     <div className="p-4 grid gap-3">
       <div className="flex items-baseline gap-3">
@@ -133,7 +145,7 @@ export function SessionDetail() {
         </div>
       </div>
 
-      <Timeline durationNs={durationNs} twist={primaryTwist} />
+      <Timeline durationNs={durationNs} twist={primaryTwist} annotations={timelineAnnotations} />
 
       <div className="flex items-center gap-2">
         <Button onClick={toggle}>{isPlaying ? "Pause" : "Play"}</Button>
@@ -141,6 +153,8 @@ export function SessionDetail() {
           {(Number(currentTimeNs) / 1e9).toFixed(2)} / {(Number(durationNs) / 1e9).toFixed(2)} s
         </span>
       </div>
+
+      {id ? <AnnotationsPanel sessionId={id} /> : null}
     </div>
   );
 }

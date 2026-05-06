@@ -12,6 +12,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .db import Db
+from .routes.annotations import get_router as annotations_router
 from .routes.files import get_router as files_router
 from .routes.sessions import get_router as sessions_router
 from .scanner import scan_directory
@@ -77,6 +78,7 @@ def build_app(sessions_dir: Path, db_path: Path) -> FastAPI:
 
     app.include_router(sessions_router(get_db))
     app.include_router(files_router(get_db))
+    app.include_router(annotations_router(get_db))
 
     @app.get("/healthz")
     def healthz():

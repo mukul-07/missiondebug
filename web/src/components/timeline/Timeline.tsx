@@ -3,9 +3,16 @@ import { Application, Container, Graphics, Text } from "pixi.js";
 import { usePlayback } from "../../stores/playback";
 import type { DecodedTwist } from "../../workers/types";
 
+export interface TimelineAnnotation {
+  id: number;
+  timeNs: number;
+  body: string;
+}
+
 type Props = {
   durationNs: bigint;
   twist: DecodedTwist[];
+  annotations?: TimelineAnnotation[];
 };
 
 const HEIGHT = 140;
@@ -14,14 +21,15 @@ const PADDING = 12;
 type DrawState = {
   durationNs: bigint;
   twist: DecodedTwist[];
+  annotations: TimelineAnnotation[];
 };
 
-export function Timeline({ durationNs, twist }: Props) {
+export function Timeline({ durationNs, twist, annotations = [] }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   // Latest props mirrored into a ref so the pixi side can read them
   // without re-running the init effect.
-  const stateRef = useRef<DrawState>({ durationNs, twist });
-  stateRef.current = { durationNs, twist };
+  const stateRef = useRef<DrawState>({ durationNs, twist, annotations });
+  stateRef.current = { durationNs, twist, annotations };
 
   // Imperative trigger to redraw — set by the init effect, called by the data effect.
   const redrawRef = useRef<(() => void) | null>(null);
@@ -149,6 +157,20 @@ export function Timeline({ durationNs, twist }: Props) {
           chart.addChild(ymin);
         }
 
+        // Annotation pins along the bottom edge of the timeline.
+        const ann = stateRef.current.annotations;
+        if (ann.length > 0) {
+          const pinY = HEIGHT - 6;
+          for (const a of ann) {
+            const frac = Number(a.timeNs) / Number(d);
+            if (!Number.isFinite(frac) || frac < 0 || frac > 1) continue;
+            const x = PADDING + frac * usableW;
+            const pin = new Graphics();
+            pin.circle(x, pinY, 4).fill(0xffd166).stroke({ color: 0x000000, width: 1 });
+            chart.addChild(pin);
+          }
+        }
+
         drawPlayhead();
       };
 
@@ -212,10 +234,10 @@ export function Timeline({ durationNs, twist }: Props) {
     };
   }, []);
 
-  // DATA: redraw whenever twist or duration changes.
+  // DATA: redraw whenever inputs change.
   useEffect(() => {
     redrawRef.current?.();
-  }, [durationNs, twist]);
+  }, [durationNs, twist, annotations]);
 
   return (
     <div

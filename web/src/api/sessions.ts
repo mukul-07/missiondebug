@@ -8,6 +8,7 @@ export interface SessionSummary {
   mcap_size_bytes: number;
   topics: string[];
   created_at: number;
+  annotation_count?: number;
 }
 
 export interface SessionListResult {
