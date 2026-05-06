@@ -1,0 +1,30 @@
+[Unit]
+Description=MissionDebug ROS 2 agent
+Documentation=https://github.com/mukul-07/missiondebug
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=missiondebug
+Group=missiondebug
+WorkingDirectory=/var/lib/missiondebug
+
+# Wrapper sources ROS 2 (humble or jazzy, whichever is installed) before
+# exec'ing the agent's Python entry point.
+ExecStart=/opt/missiondebug/bin/missiondebug-agent --config /etc/missiondebug/config.yaml
+
+Restart=on-failure
+RestartSec=5
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+# Hardening — agent is read-mostly + writes MCAPs to /var/lib/missiondebug/sessions.
+NoNewPrivileges=true
+ProtectSystem=full
+ReadWritePaths=/var/lib/missiondebug
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

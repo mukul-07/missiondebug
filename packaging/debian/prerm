@@ -1,0 +1,20 @@
+#!/bin/sh
+# Pre-removal: stop the service before files vanish.
+set -e
+
+case "$1" in
+    remove|upgrade|deconfigure)
+        if [ -d /run/systemd/system ]; then
+            systemctl stop missiondebug-agent.service || true
+            systemctl disable missiondebug-agent.service || true
+        fi
+        ;;
+    failed-upgrade)
+        ;;
+    *)
+        echo "prerm called with unknown argument: $1" >&2
+        exit 1
+        ;;
+esac
+
+exit 0

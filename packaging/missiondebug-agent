@@ -1,0 +1,31 @@
+#!/bin/bash
+# /opt/missiondebug/bin/missiondebug-agent
+#
+# Wrapper that sources the installed ROS 2 distro (humble preferred,
+# jazzy fallback) so rclpy can find its C extension, then execs the
+# agent's Python entry point inside our bundled venv.
+
+set -euo pipefail
+
+VENV=/opt/missiondebug/venv
+PYTHON="$VENV/bin/python"
+
+# Source ROS 2.
+ROS_SOURCED=
+for candidate in /opt/ros/humble/setup.bash /opt/ros/jazzy/setup.bash; do
+    if [ -f "$candidate" ]; then
+        # shellcheck disable=SC1090
+        source "$candidate"
+        ROS_SOURCED="$candidate"
+        break
+    fi
+done
+
+if [ -z "$ROS_SOURCED" ]; then
+    echo "missiondebug-agent: no ROS 2 setup.bash found at /opt/ros/{humble,jazzy}/" >&2
+    echo "Install ros-<distro>-ros-base from packages.ros.org first." >&2
+    exit 1
+fi
+
+# Run the agent.
+exec "$PYTHON" -m missiondebug_agent.main "$@"

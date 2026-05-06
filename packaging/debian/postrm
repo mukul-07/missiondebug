@@ -1,0 +1,37 @@
+#!/bin/sh
+# Post-removal:
+#   `remove`: stop service (already done in prerm), reload systemd
+#   `purge`:  also drop user, config, and (asks!) data — but for v1 we
+#             leave data in place because losing captured sessions on
+#             accidental purge would be bad. Admin can `rm -rf` manually.
+set -e
+
+case "$1" in
+    remove|upgrade|deconfigure|abort-install|abort-upgrade|disappear)
+        if [ -d /run/systemd/system ]; then
+            systemctl daemon-reload || true
+        fi
+        ;;
+    purge)
+        if [ -d /run/systemd/system ]; then
+            systemctl daemon-reload || true
+        fi
+        # Remove the system user (group will be removed too if empty).
+        if id missiondebug >/dev/null 2>&1; then
+            deluser --quiet --system missiondebug >/dev/null 2>&1 || true
+        fi
+        # Drop the config dir but keep /var/lib/missiondebug (the data).
+        rm -f /etc/missiondebug/config.yaml /etc/missiondebug/config.yaml.default
+        rmdir --ignore-fail-on-non-empty /etc/missiondebug 2>/dev/null || true
+        echo "Note: /var/lib/missiondebug/sessions has been left in place."
+        echo "Remove it manually if you want to discard captured sessions."
+        ;;
+    failed-upgrade)
+        ;;
+    *)
+        echo "postrm called with unknown argument: $1" >&2
+        exit 1
+        ;;
+esac
+
+exit 0

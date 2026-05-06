@@ -22,6 +22,11 @@ sessions/
 *.sqlite
 *.sqlite3
 
+# Packaging build artifacts
+/build/
+/dist/
+*.deb
+
 # Editors / OS
 .DS_Store
 .idea/

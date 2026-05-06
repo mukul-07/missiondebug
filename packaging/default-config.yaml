@@ -1,0 +1,32 @@
+# MissionDebug agent configuration.
+# Edit this file then `sudo systemctl restart missiondebug-agent`.
+
+robot_id: "robot-001"
+buffer_seconds: 60
+
+# ROS 2 topics to capture. Comment out anything your robot doesn't publish.
+topics:
+  - { name: "/tf", type: "tf2_msgs/msg/TFMessage" }
+  - { name: "/cmd_vel", type: "geometry_msgs/msg/Twist" }
+  - { name: "/camera/image_raw/compressed", type: "sensor_msgs/msg/CompressedImage" }
+  - { name: "/plan", type: "nav_msgs/msg/Path" }
+
+# Where MCAP files are written. Owned by the missiondebug system user.
+output_dir: "/var/lib/missiondebug/sessions"
+
+# Local control API.
+http_host: "127.0.0.1"
+http_port: 7000
+
+anomaly:
+  stall:
+    velocity_threshold: 0.01
+    duration_seconds: 5.0
+    cooldown_seconds: 30.0
+  path_deviation:
+    threshold_meters: 0.5
+    duration_seconds: 2.0
+    cooldown_seconds: 30.0
+    plan_topic: "/plan"
+    pose_topic: "/tf"
+    pose_child_frame: "base_link"

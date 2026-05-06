@@ -1,4 +1,4 @@
-.PHONY: dev test fmt lint install
+.PHONY: dev test fmt lint install package
 
 install:
 	cd agent && uv sync || pip install -e ".[dev]"
@@ -21,3 +21,7 @@ lint:
 	cd agent && ruff check .
 	cd backend && ruff check .
 	pnpm -w exec biome check web || true
+
+# Build the agent .deb (Linux only). Override version with: make package MD_VERSION=1.0.1
+package:
+	bash packaging/build-deb.sh

@@ -1,0 +1,48 @@
+#!/bin/sh
+# Postinstall: create system user + data dirs, enable + start service.
+set -e
+
+USER_NAME=missiondebug
+DATA_DIR=/var/lib/missiondebug
+CONF_DIR=/etc/missiondebug
+SESSIONS_DIR="$DATA_DIR/sessions"
+
+case "$1" in
+    configure)
+        # Create system user (idempotent).
+        if ! id "$USER_NAME" >/dev/null 2>&1; then
+            adduser --system --group --no-create-home \
+                --home "$DATA_DIR" \
+                --gecos "MissionDebug agent" \
+                "$USER_NAME"
+        fi
+
+        # Data directories owned by the agent user.
+        install -d -m 0755 -o "$USER_NAME" -g "$USER_NAME" "$DATA_DIR"
+        install -d -m 0755 -o "$USER_NAME" -g "$USER_NAME" "$SESSIONS_DIR"
+
+        # Config dir + default config (don't overwrite an admin-edited one).
+        install -d -m 0755 "$CONF_DIR"
+        if [ ! -f "$CONF_DIR/config.yaml" ]; then
+            install -m 0644 "$CONF_DIR/config.yaml.default" "$CONF_DIR/config.yaml"
+        fi
+
+        # systemd: reload, enable, start. Tolerate envs without systemd
+        # (e.g. container builds) — `|| true` so install still succeeds.
+        if [ -d /run/systemd/system ]; then
+            systemctl daemon-reload || true
+            systemctl enable missiondebug-agent.service || true
+            systemctl start missiondebug-agent.service || true
+        fi
+        ;;
+
+    abort-upgrade|abort-remove|abort-deconfigure)
+        ;;
+
+    *)
+        echo "postinst called with unknown argument: $1" >&2
+        exit 1
+        ;;
+esac
+
+exit 0

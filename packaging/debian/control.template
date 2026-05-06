@@ -1,0 +1,16 @@
+Package: missiondebug-agent
+Version: __VERSION__
+Section: misc
+Priority: optional
+Architecture: __ARCH__
+Maintainer: MissionDebug <noreply@missiondebug.local>
+Depends: python3.10 | python3.11, python3.10-venv | python3-venv, ros-humble-ros-base | ros-jazzy-ros-base, ros-humble-tf2-msgs | ros-jazzy-tf2-msgs, ros-humble-geometry-msgs | ros-jazzy-geometry-msgs, ros-humble-nav-msgs | ros-jazzy-nav-msgs, ros-humble-sensor-msgs | ros-jazzy-sensor-msgs, adduser
+Description: MissionDebug ROS 2 agent
+ Local-first debugger for ROS 2 robots. Subscribes to configured topics,
+ keeps a 60-second rolling buffer in RAM, and saves an MCAP session on
+ manual trigger or anomaly (stall, path deviation).
+ .
+ Pairs with the MissionDebug backend + web UI to replay captured sessions.
+ Configuration: /etc/missiondebug/config.yaml
+ Sessions: /var/lib/missiondebug/sessions/
+ Control API: http://127.0.0.1:7000
