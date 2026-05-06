@@ -3,6 +3,9 @@
 install:
 	cd agent && uv sync || pip install -e ".[dev]"
 	cd backend && uv sync || pip install -e ".[dev]"
+	# Backend tests reuse the agent's mcap_writer to seed sessions; install
+	# the agent into backend's venv as an editable dep so tests can import it.
+	cd backend && .venv/bin/python -m pip install -e ../agent || true
 	pnpm -C web install || npm --prefix web install
 
 dev:
