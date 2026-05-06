@@ -5,7 +5,9 @@
 # jazzy fallback) so rclpy can find its C extension, then execs the
 # agent's Python entry point inside our bundled venv.
 
-set -euo pipefail
+# NOTE: no `set -u` — ROS 2's setup.bash references unbound vars
+# (e.g. AMENT_TRACE_SETUP_FILES) and would fail under nounset.
+set -eo pipefail
 
 VENV=/opt/missiondebug/venv
 PYTHON="$VENV/bin/python"
