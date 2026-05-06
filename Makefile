@@ -9,8 +9,11 @@ dev:
 	bash scripts/dev.sh
 
 test:
-	cd agent && .venv/bin/pytest -q
-	cd backend && .venv/bin/pytest -q
+	# Unset PYTHONPATH so each project's venv is isolated from a sourced
+	# ROS environment that would otherwise leak in pytest plugins (e.g. ROS's
+	# launch_testing pulls 'lark' which our backend venv doesn't ship).
+	cd agent   && env -u PYTHONPATH .venv/bin/pytest -q
+	cd backend && env -u PYTHONPATH .venv/bin/pytest -q
 
 fmt:
 	cd agent && ruff format .
