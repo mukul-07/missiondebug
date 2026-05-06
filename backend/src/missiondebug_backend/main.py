@@ -24,14 +24,31 @@ log = logging.getLogger(__name__)
 RESCAN_INTERVAL_S = 5.0
 
 
-def build_app(sessions_dir: Path, db_path: Path) -> FastAPI:
+def build_app(
+    sessions_dir: Path,
+    db_path: Path,
+    fixtures_dir: Path | None = None,
+) -> FastAPI:
     db = Db(db_path)
+
+    scan_dirs: list[Path] = [sessions_dir]
+    if fixtures_dir is not None and fixtures_dir.exists():
+        scan_dirs.append(fixtures_dir)
+
+    def scan_all() -> int:
+        total = 0
+        for d in scan_dirs:
+            try:
+                total += scan_directory(d, db)
+            except Exception:
+                log.exception("Scan failed for %s", d)
+        return total
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
         # Initial scan synchronously so /api/sessions is populated before
         # the first request lands.
-        scan_directory(sessions_dir, db)
+        scan_all()
 
         stop = asyncio.Event()
 
@@ -43,7 +60,7 @@ def build_app(sessions_dir: Path, db_path: Path) -> FastAPI:
                 except asyncio.TimeoutError:
                     pass
                 try:
-                    n = await asyncio.to_thread(scan_directory, sessions_dir, db)
+                    n = await asyncio.to_thread(scan_all)
                     if n:
                         log.info("Rescan picked up %d new session(s)", n)
                 except Exception:
@@ -102,12 +119,20 @@ def main() -> None:
         "--sessions-dir",
         default=os.environ.get("MD_SESSIONS_DIR", "../agent/sessions"),
     )
+    parser.add_argument(
+        "--fixtures-dir",
+        default=os.environ.get("MD_FIXTURES_DIR", "../fixtures"),
+        help="Directory of demo MCAP files to also index (set MD_FIXTURES=1 to enable)",
+    )
     parser.add_argument("--db", default=os.environ.get("MD_DB", "./missiondebug.sqlite3"))
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args()
 
-    app = build_app(Path(args.sessions_dir), Path(args.db))
+    fixtures = (
+        Path(args.fixtures_dir) if os.environ.get("MD_FIXTURES") == "1" else None
+    )
+    app = build_app(Path(args.sessions_dir), Path(args.db), fixtures_dir=fixtures)
     uvicorn.run(app, host=args.host, port=args.port)
 
 

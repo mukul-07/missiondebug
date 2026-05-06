@@ -21,6 +21,8 @@ sessions/
 *.db
 *.sqlite
 *.sqlite3
+# ...but committed fixtures are exempt
+!fixtures/*.mcap
 
 # Packaging build artifacts
 /build/

@@ -30,13 +30,30 @@ make install
 source /opt/ros/humble/setup.bash
 
 # Bring up agent (:7000), backend (:8000), web (:5173) in one tmux session
-make dev
+# MD_FIXTURES=1 makes the backend also index fixtures/ — so the bundled
+# demo session shows up in the UI immediately.
+MD_FIXTURES=1 make dev
 
 # Open the UI
 xdg-open http://localhost:5173
 ```
 
-In normal use the robot's own ROS nodes publish your topics. To test without a robot, use `ros2 topic pub` from another terminal.
+You should see `fixture-robot_…` in the session list, labeled
+`fixture:demo-drive`. Click it. The 30-second timeline includes a
+deliberate stall (8–14s) and a 0.8m path deviation (14–22s). Drag the
+playhead through both and watch the velocity chart and pose readout
+update.
+
+In normal use the robot's own ROS nodes publish your topics. To test
+without a robot, use `ros2 topic pub` from another terminal.
+
+### Regenerating the fixture
+The fixture MCAP is committed to `fixtures/sample_drive.mcap`. To
+re-generate (e.g. after changing the seed script):
+```bash
+source /opt/ros/humble/setup.bash
+make fixture
+```
 
 ---
 

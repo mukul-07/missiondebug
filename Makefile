@@ -1,4 +1,4 @@
-.PHONY: dev test fmt lint install package
+.PHONY: dev test fmt lint install package fixture
 
 install:
 	cd agent && uv sync || pip install -e ".[dev]"
@@ -25,3 +25,8 @@ lint:
 # Build the agent .deb (Linux only). Override version with: make package MD_VERSION=1.0.1
 package:
 	bash packaging/build-deb.sh
+
+# Generate fixtures/sample_drive.mcap. Requires ROS 2 sourced.
+# Run once, commit the result; fresh clones reuse it.
+fixture:
+	cd agent && .venv/bin/python ../scripts/seed-fixture.py

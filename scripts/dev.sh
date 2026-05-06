@@ -34,6 +34,9 @@ BACKEND_CMD=""
 if [ -f "$ROOT/backend/.venv/bin/activate" ]; then
   BACKEND_CMD+="source '$ROOT/backend/.venv/bin/activate'; "
 fi
+if [ "${MD_FIXTURES:-}" = "1" ]; then
+  BACKEND_CMD+="MD_FIXTURES=1 "
+fi
 BACKEND_CMD+="python -m missiondebug_backend.main --sessions-dir ../agent/sessions"
 
 WEB_CMD="pnpm dev"
