@@ -32,6 +32,16 @@ export async function createAnnotation(
   return r.json();
 }
 
+export async function updateAnnotation(id: number, body: string): Promise<Annotation> {
+  const r = await fetch(`/api/annotations/${id}`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ body }),
+  });
+  if (!r.ok) throw new Error(`updateAnnotation: ${r.status}`);
+  return r.json();
+}
+
 export async function deleteAnnotation(id: number): Promise<void> {
   const r = await fetch(`/api/annotations/${id}`, { method: "DELETE" });
   if (!r.ok) throw new Error(`deleteAnnotation: ${r.status}`);

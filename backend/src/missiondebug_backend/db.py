@@ -173,6 +173,20 @@ class Db:
             )
             return [AnnotationRow.from_row(r) for r in cur.fetchall()]
 
+    def update_annotation(self, annotation_id: int, body: str) -> "AnnotationRow | None":
+        with self.connect() as conn:
+            cur = conn.execute(
+                "UPDATE annotations SET body = ? WHERE id = ?",
+                (body, annotation_id),
+            )
+            conn.commit()
+            if cur.rowcount == 0:
+                return None
+            row = conn.execute(
+                "SELECT * FROM annotations WHERE id = ?", (annotation_id,)
+            ).fetchone()
+            return AnnotationRow.from_row(row)
+
     def delete_annotation(self, annotation_id: int) -> bool:
         with self.connect() as conn:
             cur = conn.execute("DELETE FROM annotations WHERE id = ?", (annotation_id,))

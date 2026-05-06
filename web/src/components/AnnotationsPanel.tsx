@@ -5,6 +5,7 @@ import {
   createAnnotation,
   deleteAnnotation,
   listAnnotations,
+  updateAnnotation,
 } from "../api/annotations";
 import { usePlayback } from "../stores/playback";
 import { Button } from "./ui/Button";
@@ -45,6 +46,31 @@ export function AnnotationsPanel({ sessionId }: Props) {
       qc.invalidateQueries({ queryKey: ["sessions"] });
     },
   });
+
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editDraft, setEditDraft] = useState("");
+  const update = useMutation({
+    mutationFn: (params: { id: number; body: string }) =>
+      updateAnnotation(params.id, params.body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["annotations", sessionId] });
+      setEditingId(null);
+      setEditDraft("");
+    },
+  });
+
+  const startEdit = (a: Annotation) => {
+    setEditingId(a.id);
+    setEditDraft(a.body);
+  };
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditDraft("");
+  };
+  const saveEdit = () => {
+    if (editingId === null || !editDraft.trim()) return;
+    update.mutate({ id: editingId, body: editDraft.trim() });
+  };
 
   const onSave = () => {
     if (!draft.trim()) return;
@@ -118,7 +144,7 @@ export function AnnotationsPanel({ sessionId }: Props) {
               key={a.id}
               className="bg-bg border border-border rounded p-1.5 flex items-start justify-between gap-2"
             >
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <button
                   className="font-mono text-accent hover:underline"
                   onClick={() => seekTo(a.time_ns)}
@@ -126,15 +152,62 @@ export function AnnotationsPanel({ sessionId }: Props) {
                 >
                   {fmtTime(a.time_ns)}
                 </button>
-                <div className="whitespace-pre-wrap break-words">{a.body}</div>
+                {editingId === a.id ? (
+                  <div className="mt-1">
+                    <textarea
+                      autoFocus
+                      value={editDraft}
+                      onChange={(e) => setEditDraft(e.target.value)}
+                      className="w-full bg-panel border border-border rounded p-1 text-xs"
+                      rows={3}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                          e.preventDefault();
+                          saveEdit();
+                        }
+                        if (e.key === "Escape") {
+                          e.preventDefault();
+                          cancelEdit();
+                        }
+                      }}
+                    />
+                    <div className="flex gap-2 mt-1">
+                      <Button
+                        onClick={saveEdit}
+                        className="text-xs"
+                        disabled={update.isPending || !editDraft.trim()}
+                      >
+                        Save
+                      </Button>
+                      <Button variant="ghost" onClick={cancelEdit} className="text-xs">
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="whitespace-pre-wrap break-words">{a.body}</div>
+                )}
               </div>
-              <button
-                aria-label="Delete"
-                className="text-muted hover:text-accent"
-                onClick={() => remove.mutate(a.id)}
-              >
-                ×
-              </button>
+              {editingId === a.id ? null : (
+                <div className="flex items-start gap-1 shrink-0">
+                  <button
+                    aria-label="Edit"
+                    className="text-muted hover:text-accent"
+                    onClick={() => startEdit(a)}
+                    title="Edit"
+                  >
+                    ✎
+                  </button>
+                  <button
+                    aria-label="Delete"
+                    className="text-muted hover:text-accent"
+                    onClick={() => remove.mutate(a.id)}
+                    title="Delete"
+                  >
+                    ×
+                  </button>
+                </div>
+              )}
             </li>
           ))}
         </ul>

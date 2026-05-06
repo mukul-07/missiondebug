@@ -82,6 +82,37 @@ def test_annotation_lifecycle(tmp_path: Path):
         assert r.status_code == 404
 
 
+def test_update(tmp_path: Path):
+    client, sid = _client(tmp_path)
+    with client:
+        r = client.post(
+            f"/api/sessions/{sid}/annotations",
+            json={"time_ns": 1_000_000_000, "body": "first"},
+        )
+        anno_id = r.json()["id"]
+        original_created_at = r.json()["created_at"]
+
+        # update body
+        r = client.put(
+            f"/api/annotations/{anno_id}",
+            json={"body": "  updated text  "},
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["body"] == "updated text"  # trimmed
+        assert body["id"] == anno_id
+        assert body["time_ns"] == 1_000_000_000  # unchanged
+        assert body["created_at"] == original_created_at  # unchanged
+
+        # update missing -> 404
+        r = client.put("/api/annotations/99999", json={"body": "x"})
+        assert r.status_code == 404
+
+        # empty body rejected
+        r = client.put(f"/api/annotations/{anno_id}", json={"body": ""})
+        assert r.status_code == 422
+
+
 def test_validation(tmp_path: Path):
     client, sid = _client(tmp_path)
     with client:

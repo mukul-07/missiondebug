@@ -11,6 +11,10 @@ class AnnotationCreate(BaseModel):
     body: str = Field(min_length=1, max_length=2000)
 
 
+class AnnotationUpdate(BaseModel):
+    body: str = Field(min_length=1, max_length=2000)
+
+
 def _serialize(a: AnnotationRow) -> dict:
     return {
         "id": a.id,
@@ -40,6 +44,17 @@ def get_router(get_db) -> APIRouter:
         if db.get_session(session_id) is None:
             raise HTTPException(404, "session not found")
         row = db.insert_annotation(session_id, payload.time_ns, payload.body.strip())
+        return _serialize(row)
+
+    @router.put("/api/annotations/{annotation_id}")
+    def update(
+        annotation_id: int,
+        payload: AnnotationUpdate,
+        db: Db = Depends(get_db),
+    ):
+        row = db.update_annotation(annotation_id, payload.body.strip())
+        if row is None:
+            raise HTTPException(404, "annotation not found")
         return _serialize(row)
 
     @router.delete("/api/annotations/{annotation_id}", status_code=204)
