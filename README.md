@@ -6,6 +6,12 @@ When a robot misbehaves, you want to know what it was seeing 60 seconds before. 
 
 No cloud. No login. Single robot. Localhost.
 
+![MissionDebug timeline view](docs/screenshot.png)
+
+## Why this exists
+
+Most ROS debugging tools assume you knew to start recording. MissionDebug always has the last 60 seconds of your robot in RAM and snapshots it when things go wrong — manually, or automatically when a detector fires. The agent runs entirely on the robot; nothing leaves the machine unless you copy it off. Useful in defense, hospital, industrial, and other environments where cloud-first observability isn't an option.
+
 ---
 
 ## Try it locally
