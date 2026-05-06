@@ -12,6 +12,7 @@ from pathlib import Path
 import uvicorn
 
 from .config import AgentConfig
+from .detectors.from_config import RuleAnomaly, RuleEngine
 from .detectors.path_deviation import PathDeviationAnomaly, PathDeviationDetector
 from .detectors.stall import StallAnomaly, StallDetector
 from .http_api import build_app, save_now
@@ -63,7 +64,13 @@ def main() -> None:
     )
     app = build_app(config, ring)
 
-    callbacks: dict = {}
+    # Multiple detectors may want callbacks on the same topic (e.g. /tf used
+    # by path-deviation AND a config rule). Stack them per topic and present
+    # a single function to the bridge.
+    callbacks_by_topic: dict[str, list] = {}
+
+    def add_cb(topic_name: str, cb) -> None:
+        callbacks_by_topic.setdefault(topic_name, []).append(cb)
 
     # ---------- Stall detector ----------
     stall_cfg = config.anomaly.resolved_stall()
@@ -92,7 +99,7 @@ def main() -> None:
             raise
         stall_detector.update(lin, ang, ts_ns)
 
-    callbacks["/cmd_vel"] = on_cmd_vel
+    add_cb("/cmd_vel", on_cmd_vel)
 
     # ---------- Path-deviation detector (opt-in) ----------
     pd_cfg = config.anomaly.path_deviation
@@ -129,13 +136,46 @@ def main() -> None:
             if pose is not None:
                 pd_detector.update_pose(pose[0], pose[1], ts_ns)
 
-        callbacks[pd_cfg.plan_topic] = on_plan
-        callbacks[pd_cfg.pose_topic] = on_pose
+        add_cb(pd_cfg.plan_topic, on_plan)
+        add_cb(pd_cfg.pose_topic, on_pose)
+
+    # ---------- Config-driven rule engine (v1.5) ----------
+    rule_cfgs = config.anomaly.rules
+    if rule_cfgs:
+        def on_rule_anomaly(a: RuleAnomaly) -> None:
+            label = f"anomaly:{a.name}"
+            log.info("Auto-saving session: rule %s", a.name)
+            try:
+                r = save_now(config, ring, label=label)
+                log.info("Auto-saved %s (%.2fs, matched=%r)",
+                         r.session_id, r.duration_s, a.matched_value)
+            except Exception:
+                log.exception("Auto-save failed (rule %s)", a.name)
+
+        rule_engine = RuleEngine(rule_cfgs, on_anomaly=on_rule_anomaly)
+
+        for topic_name in rule_engine.topics:
+            # Bind topic_name into the closure to avoid late-binding bug.
+            def make_cb(t):
+                def cb(msg, ts_ns):
+                    rule_engine.update(t, msg, ts_ns)
+                return cb
+            add_cb(topic_name, make_cb(topic_name))
+
+        log.info("Loaded %d config-driven rule(s)", len(rule_cfgs))
 
     # ---------- ROS bridge ----------
     from .ros_bridge import RosBridge
 
-    bridge = RosBridge(config, ring, message_callbacks=callbacks)
+    # Compose multi-callbacks-per-topic into the single-callback shape the
+    # bridge expects. Order is registration order.
+    composed: dict = {}
+    for topic_name, cb_list in callbacks_by_topic.items():
+        def fan_out(msg, ts_ns, _cbs=cb_list):
+            for c in _cbs:
+                c(msg, ts_ns)
+        composed[topic_name] = fan_out
+    bridge = RosBridge(config, ring, message_callbacks=composed)
 
     spin_thread = threading.Thread(target=bridge.spin, name="rclpy-spin", daemon=True)
     spin_thread.start()

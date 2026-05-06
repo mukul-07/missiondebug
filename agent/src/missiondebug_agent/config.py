@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class TopicConfig(BaseModel):
@@ -31,9 +32,47 @@ class PathDeviationConfig(BaseModel):
     pose_child_frame: str = "base_link"
 
 
+class RuleConfig(BaseModel):
+    """A single config-driven anomaly detector rule (v1.5).
+
+    Fires when `field` on `topic`'s incoming message matches the configured
+    condition continuously for `duration_seconds`. Cooldown prevents
+    re-firing on the same sustained condition.
+    """
+
+    name: str
+    topic: str
+    field: str  # dot-path, e.g. "data" or "status.status" or "linear.x"
+    duration_seconds: float = Field(default=0.0, ge=0.0)
+    cooldown_seconds: float = Field(default=30.0, ge=0.0)
+
+    # Exactly one condition must be set.
+    equals: Any | None = None
+    not_equals: Any | None = None
+    lt: float | None = None
+    gt: float | None = None
+    lte: float | None = None
+    gte: float | None = None
+
+    @model_validator(mode="after")
+    def _exactly_one_condition(self) -> RuleConfig:
+        conditions = [
+            self.equals, self.not_equals,
+            self.lt, self.gt, self.lte, self.gte,
+        ]
+        n_set = sum(1 for c in conditions if c is not None)
+        if n_set != 1:
+            raise ValueError(
+                f"rule {self.name!r}: exactly one of "
+                "equals/not_equals/lt/gt/lte/gte must be set"
+            )
+        return self
+
+
 class AnomalyConfig(BaseModel):
     stall: StallConfig = StallConfig()
     path_deviation: PathDeviationConfig | None = None  # opt-in for v1
+    rules: list[RuleConfig] = Field(default_factory=list)  # v1.5
 
     # Backward-compat for v0 flat schema, in case anyone is still on it.
     stall_velocity_threshold: float | None = None
