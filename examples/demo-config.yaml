@@ -1,0 +1,57 @@
+# MissionDebug demo config — exercises every UI track + every detector type
+# without needing a real robot. Drive everything with `ros2 topic pub`.
+#
+# Install:
+#   sudo cp examples/demo-config.yaml /etc/missiondebug/config.yaml
+#   sudo systemctl restart missiondebug-agent
+#   journalctl -u missiondebug-agent -n 30 --no-pager
+
+robot_id: "demo-bot"
+buffer_seconds: 60
+output_dir: "/var/lib/missiondebug/sessions"
+http_host: "127.0.0.1"
+http_port: 7000
+
+topics:
+  - { name: "/cmd_vel",  type: "geometry_msgs/msg/Twist" }
+  - { name: "/tf",       type: "tf2_msgs/msg/TFMessage" }
+  - { name: "/plan",     type: "nav_msgs/msg/Path" }
+  - { name: "/battery",  type: "sensor_msgs/msg/BatteryState" }
+  - { name: "/lidar",    type: "sensor_msgs/msg/LaserScan" }
+  - { name: "/e_stop",   type: "std_msgs/msg/Bool" }
+
+anomaly:
+  # Built-in: stall (zero cmd_vel for 5s)
+  stall:
+    velocity_threshold: 0.01
+    duration_seconds: 5.0
+    cooldown_seconds: 30.0
+
+  # Built-in: low battery
+  battery_low:
+    topic: /battery
+    threshold: 0.20
+    duration_seconds: 2.0
+    cooldown_seconds: 60.0
+
+  # Built-in: topic dropout (publisher dies)
+  topic_dropout:
+    - topic: /lidar
+      silence_seconds: 3.0
+      cooldown_seconds: 60.0
+
+  # Generic rules
+  rules:
+    - name: cmd-vel-fast
+      topic: /cmd_vel
+      field: linear.x
+      gt: 0.4
+      duration_seconds: 1.0
+      cooldown_seconds: 30
+
+    - name: e-stop-pressed
+      topic: /e_stop
+      field: data
+      equals: true
+      duration_seconds: 0
+      cooldown_seconds: 30
