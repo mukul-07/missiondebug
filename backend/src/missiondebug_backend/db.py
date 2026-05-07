@@ -99,6 +99,9 @@ class Db:
     def connect(self) -> Iterator[sqlite3.Connection]:
         conn = sqlite3.connect(self._path)
         conn.row_factory = sqlite3.Row
+        # SQLite ships with FK enforcement off; the annotations FK only
+        # cascades if we turn it on per-connection.
+        conn.execute("PRAGMA foreign_keys = ON")
         try:
             yield conn
         finally:
@@ -206,6 +209,27 @@ class Db:
             cur = conn.execute("SELECT * FROM sessions WHERE id = ?", (session_id,))
             r = cur.fetchone()
             return SessionRow.from_row(r) if r else None
+
+    # ---- retention --------------------------------------------------
+
+    def total_mcap_bytes(self) -> int:
+        with self.connect() as conn:
+            cur = conn.execute("SELECT COALESCE(SUM(mcap_size_bytes), 0) AS n FROM sessions")
+            return int(cur.fetchone()["n"])
+
+    def list_oldest_sessions(self, limit: int) -> list[SessionRow]:
+        with self.connect() as conn:
+            cur = conn.execute(
+                "SELECT * FROM sessions ORDER BY started_at ASC LIMIT ?",
+                (limit,),
+            )
+            return [SessionRow.from_row(r) for r in cur.fetchall()]
+
+    def delete_session(self, session_id: str) -> bool:
+        with self.connect() as conn:
+            cur = conn.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
+            conn.commit()
+            return cur.rowcount > 0
 
     def known_paths(self) -> set[str]:
         with self.connect() as conn:
