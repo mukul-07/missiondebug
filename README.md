@@ -163,7 +163,7 @@ journalctl -u missiondebug-backend -f     # tail backend/UI logs
 
 # Inspect captures
 ls -lh /var/lib/missiondebug/sessions/
-curl -s http://localhost:8000/api/sessions | jq '.[0:3]'
+curl -s http://localhost:8000/api/sessions | jq '.sessions[0:3]'
 
 # Trigger a stall manually (publishes zero cmd_vel for 6s)
 timeout 6 ros2 topic pub -r 10 /cmd_vel geometry_msgs/Twist '{linear: {x: 0.0}}'
