@@ -2,7 +2,7 @@
 
 > Local-first debugger for ROS 2 robots. Record, detect, replay.
 
-When a robot misbehaves, you want to know what it was seeing 60 seconds before. MissionDebug runs alongside your ROS 2 stack, keeps a rolling 60-second buffer in RAM, and snapshots it to disk when something goes wrong — manually, or automatically when a detector fires (stall, path deviation). Open the web UI, click a session, scrub the timeline.
+When a robot misbehaves, you want to know what it was seeing 60 seconds before. MissionDebug runs alongside your ROS 2 stack, keeps a rolling 60-second buffer in RAM, and snapshots it to disk when something goes wrong — manually, or automatically when a detector fires (stall, path deviation, low battery, topic dropout, or any rule you define). Open the web UI, click a session, scrub the timeline.
 
 No cloud. No login. Single robot. Localhost.
 
@@ -14,7 +14,7 @@ Most ROS debugging tools assume you knew to start recording. MissionDebug always
 
 ---
 
-## Try it locally
+## Try it locally (5 minutes)
 
 You need Ubuntu 22.04 (or 24.04), ROS 2 Humble (or Jazzy), Python 3.10+, Node 20+, pnpm 9+, and `tmux`.
 
@@ -35,67 +35,161 @@ The fixture is 30 seconds long with a deliberate stall (8–14s) and a 0.8m path
 
 ## Install on a real robot
 
-Build the agent `.deb` (Linux only):
+Build the three `.deb`s (Linux only):
 
 ```bash
-sudo apt install fakeroot dpkg-dev python3-pip python3-venv
+sudo apt install fakeroot dpkg-dev python3-pip python3-venv nodejs
+sudo npm install -g pnpm
 make package
+ls dist/
+# missiondebug-agent_1.0.0_<arch>.deb       — captures sessions
+# missiondebug-backend_1.0.0_<arch>.deb     — API + session index + retention
+# missiondebug-web_1.0.0_all.deb            — static UI (backend serves it)
 ```
 
 Install on the target robot:
 
 ```bash
-sudo dpkg -i missiondebug-agent_1.0.0_<arch>.deb
-sudo nano /etc/missiondebug/config.yaml      # set robot_id + topics
+sudo dpkg -i dist/missiondebug-agent_1.0.0_<arch>.deb
+sudo dpkg -i dist/missiondebug-backend_1.0.0_<arch>.deb
+sudo dpkg -i dist/missiondebug-web_1.0.0_all.deb
+```
+
+That's it. All three start automatically and run at boot:
+
+| Service | Port | Purpose |
+|---|---|---|
+| `missiondebug-agent` | `127.0.0.1:7000` | Subscribes to ROS topics, writes MCAPs on anomaly |
+| `missiondebug-backend` | `0.0.0.0:8000` | Indexes MCAPs, serves UI + API |
+| (web — static files served by backend) | — | UI at `http://<robot>:8000` |
+
+Browse to `http://<robot>:8000` from any machine on the network. No nginx, no separate web service, no proxy.
+
+---
+
+## How to use it
+
+### 1. Configure the agent for your robot
+
+The default config captures `/cmd_vel`, `/tf`, `/plan`, and a camera. To match your stack, edit:
+
+```bash
+sudo nano /etc/missiondebug/config.yaml
 sudo systemctl restart missiondebug-agent
+journalctl -u missiondebug-agent -n 30 --no-pager
 ```
 
-The agent runs as a system service, starts at boot, exposes its API on `127.0.0.1:7000`, writes MCAP files to `/var/lib/missiondebug/sessions/`.
+You should see `Subscribed to <topic> [<type>]` for every topic in your config, plus `Loaded N config-driven rule(s)` if you added rules.
 
-`make package` builds **three** debs in `dist/`:
+For ready-to-edit starting points see [examples/](./examples/):
+- [`ground-vehicle-config.yaml`](./examples/ground-vehicle-config.yaml) — AMRs, delivery bots, indoor service robots
+- [`drone-config.yaml`](./examples/drone-config.yaml) — UAV via mavros
+- [`manipulator-config.yaml`](./examples/manipulator-config.yaml) — robot arm + MoveIt2
+- [`rule-patterns.yaml`](./examples/rule-patterns.yaml) — copy-paste cookbook of detector recipes
+
+### 2. Drive your robot — sessions appear automatically
+
+Whenever a built-in detector or one of your rules fires, the agent saves the previous 60 seconds as an MCAP. Browse to `http://<robot>:8000` and your sessions show up at the top of the list, labeled with what triggered them (`anomaly:stall`, `anomaly:my-rule-name`, `anomaly:dropout:/lidar`, etc.).
+
+Click a session → timeline + chart + pose track render. Drag the scrubber, hit space to play, use ←/→ for 100ms steps, Shift+← / Shift+→ for 1s steps. Add notes at the playhead with the **+ Add at playhead** button. Copy a deep-linked `?t=23.4` URL with **Copy link** to share an exact frame with a teammate.
+
+### 3. Save manually
+
+When the robot does something weird but no rule fired, capture the last 60s yourself:
 
 ```bash
-sudo dpkg -i missiondebug-agent_1.0.0_<arch>.deb     # capture
-sudo dpkg -i missiondebug-backend_1.0.0_<arch>.deb   # API + session index, port 8000
-sudo dpkg -i missiondebug-web_1.0.0_all.deb         # static UI (backend serves it)
+curl -X POST http://<robot>:7000/api/save -H 'Content-Type: application/json' \
+  -d '{"label":"weird-behavior-after-corner"}'
 ```
 
-Browse to `http://<robot>:8000` for the timeline UI. The backend serves
-the web bundle from the same port — no nginx, no separate web service.
+Refresh the session list — your snapshot is there with that label.
 
-```bash
-sudo systemctl status missiondebug-agent     # running?
-sudo journalctl -u missiondebug-agent -f     # tail logs
-sudo nano /etc/missiondebug/config.yaml      # set robot_id + topics
-sudo nano /etc/missiondebug/backend.env      # MD_MAX_DISK_MB etc
-```
+### 4. Write a custom rule
 
-### Configuring the agent
-
-See [examples/README.md](./examples/README.md) for ready-to-edit configs
-covering ground vehicles, drones, manipulators, plus a [rule cookbook](./examples/rule-patterns.yaml)
-of common detector recipes (battery low, e-stop pressed, planning aborted,
-collision-via-force-spike, mode change in flight, etc.).
-
-The rule schema in one block:
+Edit `/etc/missiondebug/config.yaml`:
 
 ```yaml
 anomaly:
   rules:
-    - name: e-stop-pressed
-      topic: /e_stop
-      field: data            # dot-path: data, status.status, linear.x, ...
-      equals: true           # or: not_equals / lt / gt / lte / gte
-      duration_seconds: 0    # how long condition must hold (0 = instant)
-      cooldown_seconds: 30   # min gap between fires
+    - name: my-rule
+      topic: /my_topic
+      field: data              # dot-path; e.g. "data" or "status.status" or "linear.x"
+      equals: true             # exactly one: equals / not_equals / lt / gt / lte / gte
+      duration_seconds: 0      # how long the condition must hold (0 = instant)
+      cooldown_seconds: 30     # min gap between fires
 ```
+
+Restart with `sudo systemctl restart missiondebug-agent`. To verify it loads:
+
+```bash
+journalctl -u missiondebug-agent -n 20 --no-pager | grep "Loaded.*rule"
+```
+
+To trigger it manually for testing:
+
+```bash
+ros2 topic pub --once /my_topic std_msgs/Bool '{data: true}'
+ls -lh /var/lib/missiondebug/sessions/    # new MCAP appears
+```
+
+See [`examples/rule-patterns.yaml`](./examples/rule-patterns.yaml) for recipes covering numeric thresholds, string equals, boolean flags, and actionlib aborts.
+
+### 5. Manage disk usage
+
+The backend deletes oldest sessions when total MCAP bytes exceed `MD_MAX_DISK_MB` (default: 2048 MB). To change:
+
+```bash
+sudo nano /etc/missiondebug/backend.env       # set MD_MAX_DISK_MB=<n>
+sudo systemctl restart missiondebug-backend
+```
+
+Inspect or force a sweep:
+
+```bash
+curl -s http://localhost:8000/api/admin/disk
+# {"used_bytes": ..., "used_mb": ..., "cap_mb": 2048, "cap_enabled": true, "session_count": 14}
+
+curl -s -X POST http://localhost:8000/api/admin/sweep
+# {"deleted_ids": [...], "bytes_freed": ..., "bytes_after": ..., "cap_bytes": ...}
+```
+
+### 6. Useful daily commands
+
+```bash
+# Health
+sudo systemctl status missiondebug-agent missiondebug-backend
+journalctl -u missiondebug-agent -f       # tail capture logs
+journalctl -u missiondebug-backend -f     # tail backend/UI logs
+
+# Inspect captures
+ls -lh /var/lib/missiondebug/sessions/
+curl -s http://localhost:8000/api/sessions | jq '.[0:3]'
+
+# Trigger a stall manually (publishes zero cmd_vel for 6s)
+timeout 6 ros2 topic pub -r 10 /cmd_vel geometry_msgs/Twist '{linear: {x: 0.0}}'
+```
+
+### 7. Common gotchas
+
+- **Agent + your shell on different ROS graphs** — if `ros2 node list` from your shell can't see `/missiondebug_agent`, you have a DDS isolation issue (different RMW_IMPLEMENTATION between the systemd service and your shell). Switch the service to Cyclone DDS:
+  ```bash
+  sudo apt install -y ros-humble-rmw-cyclonedds-cpp
+  sudo systemctl edit missiondebug-agent
+  # Add:
+  #   [Service]
+  #   Environment=RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+  echo 'export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp' >> ~/.bashrc
+  sudo systemctl restart missiondebug-agent
+  ```
+- **No sessions appearing** — verify the topics in your config exist (`ros2 topic list`), the rule loaded (`journalctl -u missiondebug-agent | grep Loaded`), and the condition is actually being met. Try the manual stall trigger above first.
+- **ROS 1 + ROS 2 env mixed** — if your shell shows `ROS_MASTER_URI` alongside `ROS_DISTRO=humble`, your `~/.bashrc` is sourcing both. Comment out the noetic line.
 
 ---
 
 ## How it's built
 
-- **Agent** (Python, `agent/`) — rclpy subscribers → 60s ring buffer in RAM → MCAP writer → control HTTP API on `:7000`. Detectors (stall, path-deviation) fire on the same events; both produce labeled sessions.
-- **Backend** (FastAPI + SQLite, `backend/`) — auto-rescans the sessions directory every 5s, indexes MCAP metadata, serves files with HTTP range support so the browser can stream the timeline.
+- **Agent** (Python, `agent/`) — rclpy subscribers → per-topic ring buffers in RAM (rate-limited & sized) → MCAP writer → control HTTP API on `:7000`. Built-in detectors (stall, path-deviation, battery_low, topic_dropout) plus a config-driven rule engine; all detectors auto-save and label the resulting session.
+- **Backend** (FastAPI + SQLite, `backend/`) — auto-rescans the sessions directory every 5s, indexes MCAP metadata, serves files with HTTP range support so the browser streams. Disk-retention sweeper runs every 30s. Mounts the web UI's static dist at `/` when present.
 - **Web** (React + Vite + PixiJS, `web/`) — Web Worker decodes the MCAP using `@foxglove/rosmsg2-serialization`, renders synchronized video / chart / pose tracks. Annotations stored server-side; URLs are deep-linkable with `?t=23.4`.
 
 Specs:
