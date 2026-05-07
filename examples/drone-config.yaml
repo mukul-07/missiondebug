@@ -1,0 +1,93 @@
+# MissionDebug agent — drone / UAV example.
+#
+# Quadcopter or fixed-wing UAV running PX4 or ArduPilot via mavros, or
+# a custom ROS 2 stack. Emphasis is on attitude, altitude, GPS quality,
+# and battery — the things that explain "why did it crash / land / RTL?"
+#
+# Adjust topic names to match your flight stack:
+#   ros2 topic list | grep mavros
+#
+# Restart with: sudo systemctl restart missiondebug-agent
+
+robot_id: "uav-001"
+buffer_seconds: 90       # bigger window — incident root cause often >60s back
+output_dir: "/var/lib/missiondebug/sessions"
+http_host: "127.0.0.1"
+http_port: 7000
+
+max_total_bytes: 600000000   # 600 MB
+
+topics:
+  # ---- Pose / attitude ----
+  - { name: "/mavros/local_position/pose",     type: "geometry_msgs/msg/PoseStamped" }
+  - { name: "/mavros/imu/data",                type: "sensor_msgs/msg/Imu" }
+  - { name: "/tf",                             type: "tf2_msgs/msg/TFMessage" }
+
+  # ---- Velocity + setpoints ----
+  - { name: "/mavros/local_position/velocity_local", type: "geometry_msgs/msg/TwistStamped" }
+  - { name: "/mavros/setpoint_velocity/cmd_vel",     type: "geometry_msgs/msg/TwistStamped" }
+  - { name: "/mavros/setpoint_position/local",       type: "geometry_msgs/msg/PoseStamped" }
+
+  # ---- GPS + altitude ----
+  - { name: "/mavros/global_position/global",  type: "sensor_msgs/msg/NavSatFix" }
+  - { name: "/mavros/altitude",                type: "mavros_msgs/msg/Altitude" }
+
+  # ---- Flight state + mode ----
+  - { name: "/mavros/state",                   type: "mavros_msgs/msg/State" }
+  - { name: "/mavros/extended_state",          type: "mavros_msgs/msg/ExtendedState" }
+  - { name: "/mavros/statustext/recv",         type: "mavros_msgs/msg/StatusText" }
+
+  # ---- Battery + health ----
+  - { name: "/mavros/battery",                 type: "sensor_msgs/msg/BatteryState" }
+  - { name: "/mavros/sys_status",              type: "mavros_msgs/msg/SysStatus" }
+
+  # ---- Optional FPV camera, heavily rate-limited ----
+  - name: "/camera/image_raw/compressed"
+    type: "sensor_msgs/msg/CompressedImage"
+    rate_divisor: 6     # 30 fps -> 5 fps
+    ring_seconds: 30
+
+anomaly:
+  # Drones don't usefully "stall" the way ground robots do — skip stall.
+  # Use a battery + GPS-quality + state-change rules instead.
+
+  battery_low:
+    topic: "/mavros/battery"
+    threshold: 0.25         # 25% — drones need more headroom for RTL
+    duration_seconds: 2.0
+    cooldown_seconds: 300.0
+
+  topic_dropout:
+    # Mavlink heartbeat dropping is the biggest "what just happened" signal.
+    - topic: "/mavros/state"
+      silence_seconds: 2.0
+      cooldown_seconds: 60.0
+      name: "mavlink-heartbeat-lost"
+    - topic: "/mavros/imu/data"
+      silence_seconds: 1.0
+      cooldown_seconds: 60.0
+
+  rules:
+    # Mode change away from manual flight (e.g. into LAND, RTL) — almost
+    # always interesting if it wasn't a deliberate command.
+    - name: flight-mode-rtl
+      topic: /mavros/state
+      field: mode
+      equals: "AUTO.RTL"
+      duration_seconds: 0
+      cooldown_seconds: 30
+
+    - name: flight-mode-land
+      topic: /mavros/state
+      field: mode
+      equals: "AUTO.LAND"
+      duration_seconds: 0
+      cooldown_seconds: 30
+
+    # Disarm in flight = something went wrong fast.
+    - name: disarmed
+      topic: /mavros/state
+      field: armed
+      equals: false
+      duration_seconds: 0
+      cooldown_seconds: 30

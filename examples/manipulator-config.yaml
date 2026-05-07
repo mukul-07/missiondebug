@@ -1,0 +1,98 @@
+# MissionDebug agent — manipulator / robot arm example.
+#
+# Industrial or collaborative arm running MoveIt2, ros2_control, or
+# similar. Different failure modes from mobile robots — no "stall" or
+# "path deviation" in the cmd_vel sense; instead joint limits, planning
+# failures, force/torque spikes, and grasp success.
+#
+# Restart with: sudo systemctl restart missiondebug-agent
+
+robot_id: "arm-001"
+buffer_seconds: 60
+output_dir: "/var/lib/missiondebug/sessions"
+http_host: "127.0.0.1"
+http_port: 7000
+
+max_total_bytes: 400000000   # 400 MB
+
+topics:
+  # ---- Joint state (high-rate; 100-1000 Hz typical) ----
+  # Sub-sample so it doesn't dominate the buffer.
+  - name: "/joint_states"
+    type: "sensor_msgs/msg/JointState"
+    rate_divisor: 5     # 100 Hz -> 20 Hz
+
+  # ---- Commanded joint trajectories ----
+  - { name: "/joint_trajectory_controller/joint_trajectory",
+      type: "trajectory_msgs/msg/JointTrajectory" }
+  - { name: "/joint_trajectory_controller/state",
+      type: "control_msgs/msg/JointTrajectoryControllerState" }
+
+  # ---- TCP / end-effector pose ----
+  - { name: "/tf",             type: "tf2_msgs/msg/TFMessage" }
+  - { name: "/tf_static",      type: "tf2_msgs/msg/TFMessage" }
+
+  # ---- MoveIt planning + execution status ----
+  - { name: "/move_group/status",
+      type: "actionlib_msgs/msg/GoalStatusArray" }
+  - { name: "/move_group/result",
+      type: "moveit_msgs/msg/MoveGroupActionResult" }
+  - { name: "/move_group/feedback",
+      type: "moveit_msgs/msg/MoveGroupActionFeedback" }
+
+  # ---- Force/torque sensing (often the smoking gun for collisions) ----
+  - { name: "/wrench",         type: "geometry_msgs/msg/WrenchStamped" }
+
+  # ---- Gripper ----
+  - { name: "/gripper/state",  type: "sensor_msgs/msg/JointState" }
+  - { name: "/gripper/command", type: "std_msgs/msg/Float64" }
+
+  # ---- Wrist / scene camera, rate-limited ----
+  - name: "/wrist_camera/image_raw/compressed"
+    type: "sensor_msgs/msg/CompressedImage"
+    rate_divisor: 6     # 30 fps -> 5 fps
+    ring_seconds: 30
+
+anomaly:
+  # No stall / path_deviation — they don't apply to arms.
+
+  topic_dropout:
+    # If joint_states stops, the arm controller is dead — capture
+    # everything that was happening at that moment.
+    - topic: "/joint_states"
+      silence_seconds: 1.0
+      cooldown_seconds: 60.0
+
+  rules:
+    # MoveIt planning failed (status code 4 = ABORTED).
+    - name: planning-aborted
+      topic: /move_group/result
+      field: status.status
+      equals: 4
+      duration_seconds: 0
+      cooldown_seconds: 30
+
+    # Force spike on the wrist — likely collision or unexpected contact.
+    # Tune the threshold to your arm's typical operating forces.
+    - name: force-spike
+      topic: /wrench
+      field: wrench.force.z
+      gt: 50.0          # Newtons
+      duration_seconds: 0.2
+      cooldown_seconds: 10
+
+    # Torque spike on the wrist (Z-axis = twist).
+    - name: torque-spike
+      topic: /wrench
+      field: wrench.torque.z
+      gt: 5.0           # Newton-meters
+      duration_seconds: 0.2
+      cooldown_seconds: 10
+
+    # Gripper failed to close to the commanded position — proxy for
+    # "grasp failed." Compare commanded vs reported in your stack.
+    # (Example: if /gripper/state.position is the actual width and
+    # /gripper/command was 0.0 closed, you'd want to detect drift.)
+    # This requires a custom rule comparing two topics — not yet
+    # supported by the v1.5 single-topic rule engine. For now, watch
+    # for explicit failure messages on the gripper status topic.

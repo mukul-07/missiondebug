@@ -1,0 +1,84 @@
+# MissionDebug agent — ground vehicle / AMR example.
+#
+# Generic configuration for ground-based mobile robots: AMRs, delivery
+# bots, indoor service robots, mapping rovers. Captures locomotion, pose,
+# planning, and a rate-limited camera so byte budgets stay sane.
+#
+# Adjust topic names + types to match your stack (`ros2 topic info <name>`).
+# Restart with: sudo systemctl restart missiondebug-agent
+
+robot_id: "amr-001"
+buffer_seconds: 60
+output_dir: "/var/lib/missiondebug/sessions"
+http_host: "127.0.0.1"
+http_port: 7000
+
+# Optional global cap on RAM. With camera streams included, expect ~300-600MB
+# per minute at the rates below; leave room for headroom.
+max_total_bytes: 800000000   # 800 MB
+
+topics:
+  # ---- Locomotion (cheap, high signal) ----
+  - { name: "/cmd_vel",        type: "geometry_msgs/msg/Twist" }
+  - { name: "/odom",           type: "nav_msgs/msg/Odometry" }
+
+  # ---- Pose ----
+  - { name: "/tf",             type: "tf2_msgs/msg/TFMessage" }
+  - { name: "/tf_static",      type: "tf2_msgs/msg/TFMessage" }
+
+  # ---- Planning ----
+  - { name: "/plan",           type: "nav_msgs/msg/Path" }
+  - { name: "/goal_pose",      type: "geometry_msgs/msg/PoseStamped" }
+
+  # ---- Battery + diagnostics ----
+  - { name: "/battery",        type: "sensor_msgs/msg/BatteryState" }
+  - { name: "/diagnostics",    type: "diagnostic_msgs/msg/DiagnosticArray" }
+
+  # ---- Camera (rate-limited; full rate would dominate the buffer) ----
+  - name: "/front_camera/image_raw/compressed"
+    type: "sensor_msgs/msg/CompressedImage"
+    rate_divisor: 6     # 30 fps -> 5 fps in the buffer
+    ring_seconds: 30    # smaller per-topic window
+
+  # ---- Lidar (sub-sampled; raw scans rarely change the answer in debug) ----
+  - name: "/scan"
+    type: "sensor_msgs/msg/LaserScan"
+    rate_divisor: 5     # 10 Hz -> 2 Hz
+
+anomaly:
+  # Built-in: stall (zero cmd_vel for sustained period)
+  stall:
+    velocity_threshold: 0.01
+    duration_seconds: 5.0
+    cooldown_seconds: 30.0
+
+  # Built-in: path deviation (drift from /plan)
+  path_deviation:
+    threshold_meters: 0.5
+    duration_seconds: 2.0
+    cooldown_seconds: 30.0
+    plan_topic: "/plan"
+    pose_topic: "/tf"
+    pose_child_frame: "base_link"
+
+  # Built-in convenience: low battery
+  battery_low:
+    topic: "/battery"
+    threshold: 0.20         # 20% — fires when percentage drops below this
+    duration_seconds: 5.0
+    cooldown_seconds: 600.0
+
+  # Built-in: topic dropout (publisher dies silently)
+  topic_dropout:
+    - topic: "/scan"
+      silence_seconds: 3.0
+      cooldown_seconds: 60.0
+
+  # Generic rules — see examples/rule-patterns.yaml for more recipes.
+  rules:
+    - name: e-stop-pressed
+      topic: /e_stop
+      field: data
+      equals: true
+      duration_seconds: 0
+      cooldown_seconds: 30

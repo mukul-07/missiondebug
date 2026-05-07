@@ -1,0 +1,162 @@
+# MissionDebug rule cookbook — copy-paste recipes for common debug situations.
+#
+# Each rule lives under `anomaly.rules:` in your config. Required fields:
+#   - name: human-readable, used as the auto-save label
+#   - topic: ROS 2 topic to evaluate
+#   - field: dot-path into the message payload (e.g. "data" or "status.status")
+#   - exactly one of: equals, not_equals, lt, gt, lte, gte
+#   - duration_seconds: how long the condition must hold before firing (0 = instant)
+#   - cooldown_seconds: minimum gap between fires
+#
+# The detector reads the field via getattr — same dot-path you'd write in
+# Python. Numeric comparisons require a numeric field; equals/not_equals
+# work on strings, ints, bools, anything.
+
+rules:
+  # ============================================================
+  # NUMERIC THRESHOLDS — simplest, most common pattern.
+  # ============================================================
+
+  # Battery low (also available via the convenience `battery_low:` block).
+  - name: battery-critical
+    topic: /battery
+    field: percentage
+    lt: 0.10              # below 10%
+    duration_seconds: 5
+    cooldown_seconds: 600
+
+  # Temperature too high (e.g. motor controller reporting Celsius).
+  - name: motor-overheat
+    topic: /motor/temp
+    field: temperature
+    gt: 80.0
+    duration_seconds: 10
+    cooldown_seconds: 120
+
+  # Velocity command exceeds safe envelope.
+  - name: cmd-vel-runaway
+    topic: /cmd_vel
+    field: linear.x
+    gt: 1.5               # m/s
+    duration_seconds: 1.0
+    cooldown_seconds: 30
+
+  # Force/torque spike (manipulator collision).
+  - name: wrist-force-spike
+    topic: /wrench
+    field: wrench.force.z
+    gt: 50.0              # Newtons
+    duration_seconds: 0.2
+    cooldown_seconds: 10
+
+  # ============================================================
+  # STATE-MACHINE / STRING EQUALS — robot enters a bad state.
+  # ============================================================
+
+  # FSM reports an explicit error state.
+  - name: fsm-error
+    topic: /robot_state
+    field: data
+    equals: "error"
+    duration_seconds: 0
+    cooldown_seconds: 30
+
+  # FSM stuck in "recovering" too long (something didn't auto-resolve).
+  - name: fsm-recovery-stuck
+    topic: /robot_state
+    field: data
+    equals: "recovering"
+    duration_seconds: 30      # 30s in recovery is too long
+    cooldown_seconds: 120
+
+  # Drone flight-mode change away from manual.
+  - name: flight-mode-rtl
+    topic: /mavros/state
+    field: mode
+    equals: "AUTO.RTL"
+    duration_seconds: 0
+    cooldown_seconds: 30
+
+  # ============================================================
+  # BOOLEAN FLAGS — a status bool tripping is the whole signal.
+  # ============================================================
+
+  # E-stop pressed.
+  - name: e-stop-pressed
+    topic: /e_stop
+    field: data
+    equals: true
+    duration_seconds: 0
+    cooldown_seconds: 30
+
+  # Lidar safety zone tripped.
+  - name: lidar-safety-tripped
+    topic: /lidar_safety_status
+    field: data
+    equals: true
+    duration_seconds: 0
+    cooldown_seconds: 30
+
+  # Disarmed (drone) — bool flip mid-flight.
+  - name: disarmed
+    topic: /mavros/state
+    field: armed
+    equals: false
+    duration_seconds: 0
+    cooldown_seconds: 30
+
+  # ============================================================
+  # ACTIONLIB / GOAL RESULT — capture nav/move planning failures.
+  # ============================================================
+
+  # actionlib status codes: 3=SUCCEEDED, 4=ABORTED, 5=REJECTED, 9=LOST.
+  # Capture aborts.
+  - name: nav-aborted
+    topic: /move_base/result
+    field: status.status
+    equals: 4
+    duration_seconds: 0
+    cooldown_seconds: 30
+
+  # MoveIt planning failed.
+  - name: moveit-aborted
+    topic: /move_group/result
+    field: status.status
+    equals: 4
+    duration_seconds: 0
+    cooldown_seconds: 30
+
+  # ============================================================
+  # NOT-EQUALS — fires when a field is anything but the expected value.
+  # ============================================================
+
+  # Active warnings is non-empty (string with content) for sustained period.
+  - name: warnings-active
+    topic: /active_warnings
+    field: data
+    not_equals: ""
+    duration_seconds: 10
+    cooldown_seconds: 60
+
+  # ============================================================
+  # COMBINED PATTERNS — multiple rules covering one failure mode.
+  # ============================================================
+
+  # "Pickup failed" detection: gripper command sent + gripper position
+  # didn't match. v1.5 rules are single-topic; you'd write two rules and
+  # cross-reference the resulting captures by timestamp.
+  - name: gripper-command-issued
+    topic: /gripper/command
+    field: data
+    lt: 0.05               # closed
+    duration_seconds: 0
+    cooldown_seconds: 5
+
+  - name: gripper-too-open
+    topic: /gripper/state
+    field: position[0]     # NOTE: array indexing not currently supported
+                           # in dot-path; use a custom topic that exposes
+                           # a scalar instead.
+    gt: 0.05
+    duration_seconds: 1.0
+    cooldown_seconds: 30

@@ -50,11 +50,44 @@ sudo nano /etc/missiondebug/config.yaml      # set robot_id + topics
 sudo systemctl restart missiondebug-agent
 ```
 
-The agent runs as a system service, starts at boot, exposes its API on `127.0.0.1:7000`, writes MCAP files to `/var/lib/missiondebug/sessions/`. Backend + web still run from source via `make dev` for v1; v1.5 packages those too.
+The agent runs as a system service, starts at boot, exposes its API on `127.0.0.1:7000`, writes MCAP files to `/var/lib/missiondebug/sessions/`.
+
+`make package` builds **three** debs in `dist/`:
+
+```bash
+sudo dpkg -i missiondebug-agent_1.0.0_<arch>.deb     # capture
+sudo dpkg -i missiondebug-backend_1.0.0_<arch>.deb   # API + session index, port 8000
+sudo dpkg -i missiondebug-web_1.0.0_all.deb         # static UI (backend serves it)
+```
+
+Browse to `http://<robot>:8000` for the timeline UI. The backend serves
+the web bundle from the same port — no nginx, no separate web service.
 
 ```bash
 sudo systemctl status missiondebug-agent     # running?
 sudo journalctl -u missiondebug-agent -f     # tail logs
+sudo nano /etc/missiondebug/config.yaml      # set robot_id + topics
+sudo nano /etc/missiondebug/backend.env      # MD_MAX_DISK_MB etc
+```
+
+### Configuring the agent
+
+See [examples/README.md](./examples/README.md) for ready-to-edit configs
+covering ground vehicles, drones, manipulators, plus a [rule cookbook](./examples/rule-patterns.yaml)
+of common detector recipes (battery low, e-stop pressed, planning aborted,
+collision-via-force-spike, mode change in flight, etc.).
+
+The rule schema in one block:
+
+```yaml
+anomaly:
+  rules:
+    - name: e-stop-pressed
+      topic: /e_stop
+      field: data            # dot-path: data, status.status, linear.x, ...
+      equals: true           # or: not_equals / lt / gt / lte / gte
+      duration_seconds: 0    # how long condition must hold (0 = instant)
+      cooldown_seconds: 30   # min gap between fires
 ```
 
 ---
@@ -68,11 +101,12 @@ sudo journalctl -u missiondebug-agent -f     # tail logs
 Specs:
 - [SPEC.md](./SPEC.md) — v0 (record + replay loop, single robot, localhost)
 - [v1-SPEC.md](./v1-SPEC.md) — v1 (path-deviation, annotations, share links, `.deb`, fixture)
+- [v1.5-SPEC.md](./v1.5-SPEC.md) — v1.5 (config-driven rules, topic dropout, disk retention, full backend/web `.deb`s)
 
 ## Tests
 
 ```bash
-make test                    # 34 tests, ~0.5s
+make test                    # 87 tests across agent + backend, ~1s
 ```
 
 ## License
