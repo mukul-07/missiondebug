@@ -1,5 +1,3 @@
-import * as React from "react";
-
 type Props = {
   value: number;
   min?: number;

@@ -22,7 +22,7 @@ export function TrackVideo({ label, frames }: Props) {
     if (frame.timeNs === lastTimeRef.current) return;
     lastTimeRef.current = frame.timeNs;
 
-    const blob = new Blob([frame.data], { type: `image/${frame.format}` });
+    const blob = new Blob([frame.data as BlobPart], { type: `image/${frame.format}` });
     const url = URL.createObjectURL(blob);
     const img = new Image();
     img.onload = () => {
