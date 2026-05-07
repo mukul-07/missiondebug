@@ -48,6 +48,22 @@ write_control() {
         "$1" > "$2"
 }
 
+# pip writes absolute shebangs based on where the venv was created. On
+# install, the venv path will be different (no /home/.../build/deb/...
+# prefix), so any entry-point script execs nonexistent python and dies
+# with status=203/EXEC. Rewrite shebangs from the staging path to the
+# final install path.
+relocate_venv_shebangs() {
+    # relocate_venv_shebangs <staging-prefix> <install-prefix>
+    local from="$1" to="$2"
+    # Walk every script in bin/ that has a shebang pointing into the
+    # staging path; sed-replace in place.
+    grep -rIl --include='*' "^#!$from" "$from/bin" 2>/dev/null \
+        | while read -r f; do
+            sed -i "1s|^#!$from|#!$to|" "$f"
+        done
+}
+
 # ---- agent ----------------------------------------------------------------
 
 build_agent() {
@@ -74,6 +90,8 @@ build_agent() {
 
     find "$PREFIX/venv/lib" -name "__pycache__" -type d -prune \
         -exec rm -rf {} + 2>/dev/null || true
+
+    relocate_venv_shebangs "$PREFIX/venv" "/opt/missiondebug/venv"
 
     install -m 0755 "$PKG/missiondebug-agent" "$PREFIX/bin/missiondebug-agent"
     install -m 0644 "$PKG/default-config.yaml" "$STAGE/etc/missiondebug/config.yaml.default"
@@ -121,6 +139,8 @@ build_backend() {
 
     find "$PREFIX/backend-venv/lib" -name "__pycache__" -type d -prune \
         -exec rm -rf {} + 2>/dev/null || true
+
+    relocate_venv_shebangs "$PREFIX/backend-venv" "/opt/missiondebug/backend-venv"
 
     install -m 0644 "$PKG/default-backend.env" \
         "$STAGE/etc/missiondebug/backend.env.default"
