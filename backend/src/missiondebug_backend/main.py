@@ -10,6 +10,7 @@ from pathlib import Path
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from .db import Db
 from .retention import run_periodic as run_retention, sweep_once
@@ -34,6 +35,7 @@ def build_app(
     db_path: Path,
     fixtures_dir: Path | None = None,
     max_disk_mb: int = 0,
+    web_dir: Path | None = None,
 ) -> FastAPI:
     db = Db(db_path)
 
@@ -147,6 +149,14 @@ def build_app(
             "cap_bytes": result.cap_bytes,
         }
 
+    # Mount the web UI's static dist if provided. Done last so it doesn't
+    # shadow /api/* or /healthz. The web app uses relative /api URLs, so
+    # serving it from the same origin avoids CORS + a separate static
+    # server entirely.
+    if web_dir is not None and web_dir.exists():
+        app.mount("/", StaticFiles(directory=str(web_dir), html=True), name="web")
+        log.info("Serving web UI from %s", web_dir)
+
     return app
 
 
@@ -174,6 +184,11 @@ def main() -> None:
         default=int(os.environ.get("MD_MAX_DISK_MB", "0")),
         help="Cap on total MCAP bytes; oldest sessions deleted when over. 0 = disabled.",
     )
+    parser.add_argument(
+        "--web-dir",
+        default=os.environ.get("MD_WEB_DIR", ""),
+        help="Directory of the built web UI to serve at /. Empty = don't serve UI.",
+    )
     args = parser.parse_args()
 
     fixtures = (
@@ -184,6 +199,7 @@ def main() -> None:
         Path(args.db),
         fixtures_dir=fixtures,
         max_disk_mb=args.max_disk_mb,
+        web_dir=Path(args.web_dir) if args.web_dir else None,
     )
     uvicorn.run(app, host=args.host, port=args.port)
 

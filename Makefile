@@ -1,4 +1,4 @@
-.PHONY: dev test fmt lint install package fixture
+.PHONY: dev test fmt lint install package package-agent package-backend package-web fixture
 
 install:
 	cd agent && uv sync || pip install -e ".[dev]"
@@ -28,9 +28,19 @@ lint:
 	cd backend && ruff check .
 	pnpm -w exec biome check web || true
 
-# Build the agent .deb (Linux only). Override version with: make package MD_VERSION=1.0.1
+# Build all .debs (Linux only). Override version: make package MD_VERSION=1.0.1
+# Use package-agent / package-backend / package-web for individual targets.
 package:
-	bash packaging/build-deb.sh
+	bash packaging/build-deb.sh all
+
+package-agent:
+	bash packaging/build-deb.sh agent
+
+package-backend:
+	bash packaging/build-deb.sh backend
+
+package-web:
+	bash packaging/build-deb.sh web
 
 # Generate fixtures/sample_drive.mcap. Requires ROS 2 sourced.
 # Run once, commit the result; fresh clones reuse it.

@@ -1,0 +1,22 @@
+#!/bin/sh
+# On purge, remove backend's config but leave sessions + DB (might be
+# valuable; the user can rm -rf /var/lib/missiondebug themselves).
+set -e
+
+case "$1" in
+    purge)
+        rm -f /etc/missiondebug/backend.env /etc/missiondebug/backend.env.default
+        # Don't rmdir /etc/missiondebug — agent package may share it.
+        if [ -d /run/systemd/system ]; then
+            systemctl daemon-reload || true
+        fi
+        ;;
+    remove|upgrade|abort-install|abort-upgrade|disappear|failed-upgrade)
+        ;;
+    *)
+        echo "postrm called with unknown argument: $1" >&2
+        exit 1
+        ;;
+esac
+
+exit 0

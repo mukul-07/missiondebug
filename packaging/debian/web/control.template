@@ -1,0 +1,14 @@
+Package: missiondebug-web
+Version: __VERSION__
+Section: misc
+Priority: optional
+Architecture: all
+Maintainer: MissionDebug <noreply@missiondebug.local>
+Depends: missiondebug-backend
+Description: MissionDebug web UI (static dist)
+ Built React + PixiJS UI for replaying captured MCAP sessions. Installs
+ the static dist to /var/lib/missiondebug/web/; the backend serves it
+ from there at http://<host>:8000/.
+ .
+ No separate web service — the backend handles both /api and the static
+ files on the same port.

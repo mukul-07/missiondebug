@@ -1,0 +1,29 @@
+#!/bin/sh
+# Postinstall: chown the web dir to the missiondebug user, restart backend
+# so it picks up the new static files. (Static mount is decided at startup.)
+set -e
+
+USER_NAME=missiondebug
+WEB_DIR=/var/lib/missiondebug/web
+
+case "$1" in
+    configure)
+        if id "$USER_NAME" >/dev/null 2>&1; then
+            chown -R "$USER_NAME:$USER_NAME" "$WEB_DIR" 2>/dev/null || true
+        fi
+
+        if [ -d /run/systemd/system ]; then
+            systemctl restart missiondebug-backend.service 2>/dev/null || true
+        fi
+        ;;
+
+    abort-upgrade|abort-remove|abort-deconfigure)
+        ;;
+
+    *)
+        echo "postinst called with unknown argument: $1" >&2
+        exit 1
+        ;;
+esac
+
+exit 0

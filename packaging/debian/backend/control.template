@@ -1,0 +1,17 @@
+Package: missiondebug-backend
+Version: __VERSION__
+Section: misc
+Priority: optional
+Architecture: __ARCH__
+Maintainer: MissionDebug <noreply@missiondebug.local>
+Depends: python3.10 | python3.11, python3.10-venv | python3-venv, adduser
+Recommends: missiondebug-web
+Description: MissionDebug backend API + session index
+ FastAPI service that indexes captured MCAP sessions, serves them to the
+ web UI, and exposes admin endpoints (rescan, disk usage, retention
+ sweep). Pairs with missiondebug-agent (which captures sessions) and
+ missiondebug-web (the React UI; backend serves it when installed).
+ .
+ Listens on 0.0.0.0:8000 by default.
+ Config: /etc/missiondebug/backend.env
+ Data: /var/lib/missiondebug/missiondebug.sqlite3

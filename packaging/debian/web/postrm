@@ -1,0 +1,19 @@
+#!/bin/sh
+# On removal, restart backend so it stops trying to serve the (deleted) dir.
+set -e
+
+case "$1" in
+    purge|remove)
+        if [ -d /run/systemd/system ]; then
+            systemctl restart missiondebug-backend.service 2>/dev/null || true
+        fi
+        ;;
+    upgrade|abort-install|abort-upgrade|disappear|failed-upgrade)
+        ;;
+    *)
+        echo "postrm called with unknown argument: $1" >&2
+        exit 1
+        ;;
+esac
+
+exit 0

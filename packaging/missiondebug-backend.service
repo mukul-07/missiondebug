@@ -1,0 +1,31 @@
+[Unit]
+Description=MissionDebug backend API + web UI
+Documentation=https://github.com/mukul-07/missiondebug
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=missiondebug
+Group=missiondebug
+WorkingDirectory=/var/lib/missiondebug
+EnvironmentFile=-/etc/missiondebug/backend.env
+ExecStart=/opt/missiondebug/backend-venv/bin/missiondebug-backend \
+  --sessions-dir /var/lib/missiondebug/sessions \
+  --db /var/lib/missiondebug/missiondebug.sqlite3 \
+  --host 0.0.0.0 \
+  --port 8000
+
+Restart=on-failure
+RestartSec=5
+
+NoNewPrivileges=true
+ProtectSystem=full
+ReadWritePaths=/var/lib/missiondebug
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
