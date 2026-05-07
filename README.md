@@ -6,7 +6,11 @@ When a robot misbehaves, you want to know what it was seeing 60 seconds before. 
 
 No cloud. No login. Single robot. Localhost.
 
-![MissionDebug timeline view](docs/screenshot.png)
+![Session list — auto-saves labeled by what triggered them](docs/screenshot-list.png)
+
+> Sessions auto-save when a detector fires; the label tells you why. Click one to scrub the timeline.
+
+![Session detail — chart + pose track + annotation at the playhead](docs/screenshot-detail.png)
 
 ## Why this exists
 
