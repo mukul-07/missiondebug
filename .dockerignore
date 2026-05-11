@@ -1,0 +1,56 @@
+# Mirror most of .gitignore so the build context stays small.
+
+# VCS
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*.egg-info
+.venv
+venv
+.uv
+.pytest_cache
+.ruff_cache
+.mypy_cache
+
+# Node
+node_modules
+**/node_modules
+dist
+**/dist
+.vite
+*.tsbuildinfo
+
+# Local data (committed fixtures excluded via .gitignore allowlist; for Docker we keep them)
+sessions
+*.db
+*.sqlite
+*.sqlite3
+
+# Packaging output
+/build
+/dist
+*.deb
+
+# Editor / OS
+.DS_Store
+.idea
+.vscode
+*.swp
+
+# Env files
+.env
+.env.local
+
+# Docs / specs not needed in the runtime image
+docs
+*.md
+!agent/README.md
+!backend/README.md
+!web/README.md
+
+# Tests not needed at runtime (kept in repo for CI which checks out fresh)
+agent/tests
+backend/tests
