@@ -1,12 +1,27 @@
 # MissionDebug
 
-> Local-first debugger for ROS 2 robots. Record, detect, replay.
+> **MCAP-native incident replay for ROS 2 robots.** Capture the 60 seconds before a failure, then scrub it like a black box in Foxglove.
 
-When a robot misbehaves, you want to know what it was seeing 60 seconds before. MissionDebug runs alongside your ROS 2 stack, keeps a rolling 60-second buffer in RAM, and snapshots it to disk when something goes wrong — manually, or automatically when a detector fires (stall, path deviation, low battery, topic dropout, or any rule you define). Open the web UI, click a session, scrub the timeline.
+When a robot misbehaves, you want the 60 seconds *before* — what it was seeing, what it was commanding, what state it was in. MissionDebug runs alongside your ROS 2 stack, keeps a rolling buffer of the topics you care about, and writes a standard MCAP file the moment something goes wrong. Detectors fire automatically (stall, path deviation, low battery, topic dropout, or any rule you write in YAML). Open the web UI, click a session, scrub the timeline. Annotate the moment, share a deep-linked URL with a teammate.
 
-No cloud. No login. Single robot. Localhost.
+Standards-native. Local-first. No cloud, no login, no proprietary format.
 
 ![Demo — trigger an anomaly, session auto-saves, replay it](docs/demo.gif)
+
+## How MissionDebug fits
+
+| | When to reach for it |
+|---|---|
+| **MissionDebug** | *After* a failure. "What happened in the 60 seconds before it broke?" Auto-trigger on rules, replay in the browser, annotate, share a timestamped link. |
+| [`rosbag2 --snapshot-mode`](https://docs.ros.org/en/rolling/Tutorials/Advanced/Recording-A-Bag-From-Your-Own-Node-CPP.html) | The recording primitive MissionDebug wraps. Same in-memory rolling buffer, but no auto-trigger, no UI, no detection, no retention. Reach for it if you're building your own stack on top. |
+| Live-ops tools (e.g. [ros2_medkit](https://github.com/selfpatch/ros2_medkit)) | *During* the incident. "What is the robot doing right now?" Live introspection, fault APIs, remote operations. Different time-shape — complementary, not substitute. |
+| Continuous bag recorders | Keep the deep archive of high-volume topics (point clouds, costmaps). MissionDebug owns the focused, replay-ready layer for the topics engineers actually scrub during incidents. |
+
+MissionDebug is the **post-incident layer**. It's what you reach for *after* the alert fires.
+
+## Why this exists
+
+Most ROS debugging tools assume you knew to start recording. MissionDebug always has the last 60 seconds of your robot in RAM and snapshots it when things go wrong — manually, or automatically when a detector fires. The agent runs entirely on the robot; nothing leaves the machine unless you copy it off. Useful in defense, hospital, industrial, and other environments where cloud-first observability isn't an option.
 
 ![Session list — auto-saves labeled by what triggered them](docs/screenshot-list.png)
 
@@ -14,11 +29,11 @@ No cloud. No login. Single robot. Localhost.
 
 ![Session detail — chart + pose track + annotation at the playhead](docs/screenshot-detail.png)
 
-## Why this exists
-
-Most ROS debugging tools assume you knew to start recording. MissionDebug always has the last 60 seconds of your robot in RAM and snapshots it when things go wrong — manually, or automatically when a detector fires. The agent runs entirely on the robot; nothing leaves the machine unless you copy it off. Useful in defense, hospital, industrial, and other environments where cloud-first observability isn't an option.
-
 ---
+
+## Try it without installing anything (60 seconds)
+
+No ROS install, no source checkout — just Docker. See [missiondebug-demos](https://github.com/mukul-07/missiondebug-demos): `git clone` → `docker compose up` → scrub the `sample_drive` fixture in your browser.
 
 ## Try it locally (5 minutes)
 
