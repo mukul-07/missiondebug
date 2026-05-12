@@ -58,50 +58,72 @@ Three deployment shapes, all supported from a single codebase:
    nothing. Capability listed publicly. This is the commercial path
    for teams without their own ops capacity.
 
-### Design target customer profile
+### Design target — fleet-scale ROS 2 robotics
 
-v2 is built for a specific customer shape, derived from a real
-in-production warehouse-AGV bag-manager config a team member ran at
-a prior company. Calling this out explicitly so the build stays
-honest:
+v2's design target is **any robotics company running ROS 2 at fleet
+scale**, regardless of vertical. The product serves warehouse AGVs,
+drones, manipulators, mobile manipulation, agriculture robots,
+defense platforms, surgical systems, construction automation — any
+ROS 2 robot whose operators want post-incident replay across a fleet.
 
-- **Industry:** warehouse intralogistics / autonomous forklift /
-  AGV fleet operations. VDA 5050 is in use.
-- **Fleet size:** 10–100 robots per customer site, multi-site overall.
-- **Topics per robot:** **50–70 ROS topics typical** (not 5–15 as
-  v1.5 envisioned). Each topic is a real subscription the customer
-  cares about — they're recording them today via a homegrown bag
-  manager because they had no better option.
-- **Topic shape mix:**
-  - ~20 hardware diagnostics + feedback topics (BMS, motor, fork,
-    logic-board, HW interface — custom numeric-field message types)
-  - ~12 navigation + planning (move_base/nav2, lookahead_pose,
-    pruned_path, plan_traj, costmap, dock/*)
-  - ~8 state machines (robot_state, robot_state_fms, vda_state,
-    task_status, active_warnings — string/enum-shaped)
-  - ~10 sensors (scan, joint_states, tag_detections, lidar safety)
-  - ~5 point clouds (vision pipeline)
-  - **3 different `cmd_vel` topics** (nav, dock, base_controller)
-  - 2-3 TF + costmap
-- **Anomalies they want to catch:** VDA state transitions to ERROR,
-  battery low, motor overcurrent, lidar dropout, task aborted, fork
-  command timeout, e-stop fired, active warnings non-empty. Roughly
-  10-15 rules per robot.
-- **Current pain:** bag-manager rotates 5-min bags continuously,
-  moves them to an /error/ folder when `robot_state_fms` flags an
-  error. No replay UI. No rule engine — just one field of one topic
-  checked. No multi-robot view. No annotations. No shareable URLs.
+What stresses v2 is **not the vertical**, it's a recurring **technical
+shape** that mature ROS 2 robots share across industries:
 
-This profile means the v1.5 UI (3 specialized panels for video, pose,
-`/cmd_vel`) is **not enough** out of the box. A 70-topic AGV would
-render ~3% of its data with the current UI. **Generic numeric-scalar
-charts and a JSON message inspector are pre-pilot requirements**, not
-v2.5 polish (see the re-sequenced Build Plan below).
+- **Fleet size:** 10–100 robots per customer (single-robot users are
+  still served by v1.5's standalone path; v2's additional surface is
+  optional).
+- **Topics per robot:** **30–70 ROS topics typical**, not 5–15 as
+  v1.5 envisioned. Each topic is a real subscription operators care
+  about and would record today if they had a place to put them.
+- **Message-type mix** (the part that breaks v1.5's three-panel UI):
+  - ~15-25 **custom hardware diagnostics + feedback** topics with
+    numeric-field message types (battery, motor, joint, sensor
+    health, hardware-interface status, etc.)
+  - ~5-10 **state-machine topics** — string/enum fields representing
+    robot mode, mission status, FSM state, warning flags
+  - ~10 **navigation + planning** topics — paths, poses, costmaps,
+    lookaheads, planner state
+  - ~5-10 **sensor topics** that aren't cameras — laser scans,
+    point clouds, IMU, joint states, tag detections
+  - **Often multiple `cmd_vel`-shaped control topics** — e.g.
+    `/nav/cmd_vel`, `/dock/cmd_vel`, `/<robot>/base_controller/cmd_vel`,
+    `/teleop/cmd_vel`. v1.5 hardcoded the velocity chart to a single
+    `/cmd_vel`; real fleets don't.
+  - Cameras + tf (the topics v1.5's existing renderers already handle)
+- **Anomalies operators want to catch:** state-machine transitions to
+  ERROR / FAILED / ABORTED, battery / power thresholds, sensor
+  dropouts, mode/command/feedback divergence, safety warnings, force
+  overruns, position drift. **Typically 10–15 rules per robot**, each
+  hitting a different topic + field.
+- **Current pain (the why-they-need-this):** most teams at this scale
+  have built a homegrown bag-manager — N-minute bag rotation + a
+  state-topic poller that moves bags to an error folder. Real
+  example: a 68-topic warehouse-AGV bag-manager that polls a single
+  FSM topic, rotates 5-min bags, manages disk by folder size. No
+  rule engine, no replay UI, no multi-robot view, no annotations.
+  MissionDebug's value here is the **detection + replay + multi-robot +
+  annotation + UI** layer on top — they've already done the capture +
+  rotation + disk-management work themselves.
 
-Smaller customers (10–30 topics, drones, manipulators) remain
-served — v1.5 examples + the existing renderers cover them. The
-design target is the *upper* end, because if v2 serves 70-topic
-warehouse AGVs cleanly, smaller customers come along for free.
+**Reference example** for the build is a real production
+warehouse-AGV config (68 topics, multiple cmd_vels, custom hardware
+diagnostics, VDA 5050 state machine, point-cloud vision pipeline).
+That config is one instance of the technical shape above, not the
+shape's definition. Drone fleets, manipulator cells, agricultural
+robots all hit the same shape with different topic names.
+
+**Implication for v2 build:** the v1.5 UI (3 specialized panels for
+CompressedImage, TFMessage+Path, Twist on `/cmd_vel`) renders ~3% of
+a real 30–70 topic config. **Generic numeric-scalar charts, JSON
+message inspector, and configurable velocity-chart source topic are
+pre-pilot requirements**, not v2.5 polish (see re-sequenced Build
+Plan below).
+
+Smaller customers (5–20 topics, single-robot prototypes, simpler
+configs) remain served unchanged — v1.5 examples + the existing
+renderers cover them, and the v2 hub stays optional. The design
+target is the *upper* end of fleet complexity, because if v2 serves
+70-topic robots cleanly, smaller robots come along for free.
 
 ## What v2 IS
 
@@ -307,11 +329,12 @@ it. Tested in CI with two agent instances + one hub.
 
 ### Phase 1.7 — Topic rendering breadth (target: 3 days)
 
-Driven by the design-target customer profile (50–70 topics per robot).
-Today's UI specializes three message-type families (CompressedImage,
-TFMessage+Path, Twist on `/cmd_vel`) and renders ~3% of a real
-warehouse-AGV topic mix. P1.7 raises that to ~70% without forcing
-customers to publish into specific topic names.
+Driven by the design target (fleet-scale ROS 2 robotics, 30–70 topics
+per robot, custom message types). Today's UI specializes three
+message-type families (CompressedImage, TFMessage+Path, Twist on
+`/cmd_vel`) and renders ~3% of a real 30–70 topic config. P1.7 raises
+that to ~70% without forcing customers to publish into specific topic
+names, and without locking the product to any one vertical.
 
 1. **Generic scalar chart panel.** New `TrackScalar.tsx` component
    that renders any numeric field (Float32/Float64/int) given a
@@ -346,10 +369,12 @@ customers to publish into specific topic names.
      renders `/cmd_vel` by default.
    - Topic list expander works for sessions with 1, 5, and 70 topics.
 
-**Deliverable:** Take the real 68-topic warehouse-AGV config from
-the prior-job example, generate a fixture session for it, render in
-the web UI. ≥70% of topics produce a visible panel; the rest are
-discoverable via the topic-list expander + Foxglove deep-link.
+**Deliverable:** Take a real ≥50-topic production config (warehouse
+AGV, drone, manipulator, or other ROS 2 fleet shape — the reference
+warehouse-AGV config in `examples/` is the test case), generate a
+fixture session for it, render in the web UI. ≥70% of topics produce
+a visible panel; the rest are discoverable via the topic-list
+expander + Foxglove deep-link.
 
 ### Phase 2 — Operational health (target: 1 week)
 
@@ -584,8 +609,8 @@ and the agent's standalone path is unaffected — engineer-tier
 customers continue to get value from v1.5 unchanged.
 
 The reason the pre-pilot block is ~3.5 weeks larger than the
-original "Phase 1 only" plan: a real 70-topic warehouse-AGV
-customer (the design target) would reject a pilot built on Phase 1
+original "Phase 1 only" plan: a real 30–70 topic fleet customer (the
+design target — any vertical) would reject a pilot built on Phase 1
 alone — UI renders ~3% of their topics, no auth for CISO review,
 no fleet-health view, durability concern with bytes only on the
 robot. Building Phase 1 + 1.7 + 4 + 2 + 5a moves the pilot from
