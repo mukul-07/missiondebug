@@ -52,7 +52,8 @@ jobs:
           cd agent   && uv sync
           cd ../backend && uv sync
           # Backend tests reuse the agent's mcap_writer to seed sessions.
-          .venv/bin/python -m pip install -e ../agent
+          # uv-created venvs don't include pip by default, so use `uv pip`.
+          uv pip install -e ../agent
 
       - name: Run tests
         run: make test
