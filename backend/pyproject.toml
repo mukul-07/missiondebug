@@ -7,6 +7,10 @@ dependencies = [
   "fastapi>=0.115",
   "uvicorn[standard]>=0.30",
   "mcap>=1.2.1",
+  # v2: async HTTP client for hub-as-proxy MCAP fetch (Phase 1.5).
+  # Already pulled in transitively by fastapi/starlette in many setups
+  # but pinning it here makes the dependency explicit.
+  "httpx>=0.27",
 ]
 
 [project.optional-dependencies]
