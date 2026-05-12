@@ -55,5 +55,28 @@ jobs:
           # uv-created venvs don't include pip by default, so use `uv pip`.
           uv pip install -e ../agent
 
+      - name: Install pytest-cov (coverage only on 3.11)
+        if: matrix.python-version == '3.11'
+        run: |
+          cd agent   && uv pip install pytest-cov
+          cd ../backend && uv pip install pytest-cov
+
       - name: Run tests
+        if: matrix.python-version != '3.11'
         run: make test
+
+      - name: Run tests with coverage (3.11 only)
+        if: matrix.python-version == '3.11'
+        run: |
+          cd agent && env -u PYTHONPATH .venv/bin/pytest -q \
+            --cov=missiondebug_agent --cov-report=xml:coverage.xml
+          cd ../backend && env -u PYTHONPATH .venv/bin/pytest -q \
+            --cov=missiondebug_backend --cov-report=xml:coverage.xml
+
+      - name: Upload coverage to Codecov
+        if: matrix.python-version == '3.11'
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./agent/coverage.xml,./backend/coverage.xml
+          flags: agent,backend
+          fail_ci_if_error: false
