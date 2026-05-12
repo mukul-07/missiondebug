@@ -15,6 +15,11 @@ dist/
 .vite/
 *.tsbuildinfo
 
+# TypeScript ad-hoc emit (IDE/editor with isolatedModules sometimes writes
+# .js next to .ts/.tsx — the canonical build goes to web/dist via vite).
+web/src/**/*.js
+!web/src/workers/**/*.js
+
 # Data
 sessions/
 *.mcap
