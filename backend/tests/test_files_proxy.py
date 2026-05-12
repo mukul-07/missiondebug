@@ -159,3 +159,14 @@ def test_proxy_returns_501_for_s3_scheme(tmp_path):
     )
     r = c.get("/api/sessions/hub-1/mcap")
     assert r.status_code == 501
+
+
+def test_head_is_supported(tmp_path):
+    """HEAD on /mcap is accepted (curl -I, load balancers, health checks).
+    Behaviour mirrors GET — same status codes, same headers, empty body."""
+    with _running_fake_agent() as base:
+        c = _client_with_hub_session(tmp_path, f"{base}/api/sessions/hub-1/mcap")
+        r = c.head("/api/sessions/hub-1/mcap")
+    assert r.status_code == 200
+    # Body must be empty on HEAD.
+    assert r.content == b""

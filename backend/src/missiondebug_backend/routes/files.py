@@ -39,7 +39,11 @@ _PROXY_TIMEOUT = httpx.Timeout(connect=5.0, read=30.0, write=10.0, pool=5.0)
 def get_router(get_db) -> APIRouter:
     router = APIRouter(prefix="/api/sessions", tags=["files"])
 
-    @router.get("/{session_id}/mcap", summary="Stream the session's MCAP file (supports Range)")
+    @router.api_route(
+        "/{session_id}/mcap",
+        methods=["GET", "HEAD"],
+        summary="Stream the session's MCAP file (supports Range)",
+    )
     async def get_mcap(session_id: str, request: Request, db: Db = Depends(get_db)):
         """Returns the raw MCAP bytes. Honors HTTP Range requests so the
         browser scrubber can fetch arbitrary chunks for fast seek.
