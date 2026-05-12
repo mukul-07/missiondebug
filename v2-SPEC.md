@@ -58,6 +58,51 @@ Three deployment shapes, all supported from a single codebase:
    nothing. Capability listed publicly. This is the commercial path
    for teams without their own ops capacity.
 
+### Design target customer profile
+
+v2 is built for a specific customer shape, derived from a real
+in-production warehouse-AGV bag-manager config a team member ran at
+a prior company. Calling this out explicitly so the build stays
+honest:
+
+- **Industry:** warehouse intralogistics / autonomous forklift /
+  AGV fleet operations. VDA 5050 is in use.
+- **Fleet size:** 10–100 robots per customer site, multi-site overall.
+- **Topics per robot:** **50–70 ROS topics typical** (not 5–15 as
+  v1.5 envisioned). Each topic is a real subscription the customer
+  cares about — they're recording them today via a homegrown bag
+  manager because they had no better option.
+- **Topic shape mix:**
+  - ~20 hardware diagnostics + feedback topics (BMS, motor, fork,
+    logic-board, HW interface — custom numeric-field message types)
+  - ~12 navigation + planning (move_base/nav2, lookahead_pose,
+    pruned_path, plan_traj, costmap, dock/*)
+  - ~8 state machines (robot_state, robot_state_fms, vda_state,
+    task_status, active_warnings — string/enum-shaped)
+  - ~10 sensors (scan, joint_states, tag_detections, lidar safety)
+  - ~5 point clouds (vision pipeline)
+  - **3 different `cmd_vel` topics** (nav, dock, base_controller)
+  - 2-3 TF + costmap
+- **Anomalies they want to catch:** VDA state transitions to ERROR,
+  battery low, motor overcurrent, lidar dropout, task aborted, fork
+  command timeout, e-stop fired, active warnings non-empty. Roughly
+  10-15 rules per robot.
+- **Current pain:** bag-manager rotates 5-min bags continuously,
+  moves them to an /error/ folder when `robot_state_fms` flags an
+  error. No replay UI. No rule engine — just one field of one topic
+  checked. No multi-robot view. No annotations. No shareable URLs.
+
+This profile means the v1.5 UI (3 specialized panels for video, pose,
+`/cmd_vel`) is **not enough** out of the box. A 70-topic AGV would
+render ~3% of its data with the current UI. **Generic numeric-scalar
+charts and a JSON message inspector are pre-pilot requirements**, not
+v2.5 polish (see the re-sequenced Build Plan below).
+
+Smaller customers (10–30 topics, drones, manipulators) remain
+served — v1.5 examples + the existing renderers cover them. The
+design target is the *upper* end, because if v2 serves 70-topic
+warehouse AGVs cleanly, smaller customers come along for free.
+
 ## What v2 IS
 
 - **Central hub backend.** Same FastAPI codebase, deployed once
@@ -203,6 +248,33 @@ missiondebug/
 
 ## Build Plan — Phased
 
+### Re-sequenced pre-pilot order (updated 2026-05-12)
+
+The original sequencing was "Phase 1 → pilot → Phases 2-7." A real
+70-topic customer config (see `Design target customer profile` above)
+made it clear that Phase 1 alone is not enough for a pilot to convert:
+the customer would see a UI that renders ~3% of their topics, fail a
+CISO review (no auth), have no fleet-health view, and worry about
+durability if a robot dies.
+
+**The honest order is:**
+
+| Order | Phase | Effort | Why pre-pilot |
+|---|---|---|---|
+| 1 | **Phase 1** | done (2026-05-12) | Architectural keystone — agents + hub + ingest + proxy. |
+| 2 | **Phase 1.7** | ~3 days | Generic scalar chart + JSON message inspector + configurable cmd_vel topic + topic-list expander. Without this, replay is broken for 50+ topic fleets. |
+| 3 | **Phase 4** (basic auth) | ~1 day | Single shared password. Unblocks CISO review at the pilot customer. |
+| 4 | **Phase 2** (operational health) | ~1 week | Customer needs to trust "9/10 agents reporting" before they bet on us. |
+| 5 | **Phase 5a** (S3 upload option) | ~1 week | Just the upload path — lifecycle policies wait. Closes the "robot dies, data lost" durability concern. |
+| 6 | **— Pilot starts here —** | 30 days | Christian-introduced (or self-introduced) fleet customer runs MissionDebug on ≥10 robots. |
+| 7 | **Phase 3** (fleet observability) | ~2 weeks | Shape driven by what the pilot customer actually asks for. |
+| 8 | **Phase 5b** (lifecycle policies) | ~3-4 days | Same — pilot tells us cold-tier needs. |
+| 9 | **Phase 6** (alerting) | ~1 week | Pilot tells us PagerDuty vs Slack vs both. |
+| 10 | **Phase 7** (SSO/RBAC + Transitive capability) | ~2-3 weeks | After pilot validates the product — enterprise + distribution tier work. |
+
+Total pre-pilot work beyond Phase 1: **~3.5 weeks**. Detail on
+Phase 1.7 below; the other phases keep their existing scope.
+
 ### Phase 1 — Central hub backend (target: 4 weeks)
 
 The architectural keystone. Everything else depends on this.
@@ -232,6 +304,52 @@ The architectural keystone. Everything else depends on this.
 **Deliverable:** Two robots running agents, one hub on a third machine.
 Both robots' sessions visible in the hub UI. Click a session, scrub
 it. Tested in CI with two agent instances + one hub.
+
+### Phase 1.7 — Topic rendering breadth (target: 3 days)
+
+Driven by the design-target customer profile (50–70 topics per robot).
+Today's UI specializes three message-type families (CompressedImage,
+TFMessage+Path, Twist on `/cmd_vel`) and renders ~3% of a real
+warehouse-AGV topic mix. P1.7 raises that to ~70% without forcing
+customers to publish into specific topic names.
+
+1. **Generic scalar chart panel.** New `TrackScalar.tsx` component
+   that renders any numeric field (Float32/Float64/int) given a
+   topic + dotted field path (e.g.
+   `/mag_fl_003/bms_feedback.percentage`,
+   `/mag_fl_003/motor_feedback.current_a`). Reuses the
+   field-walking logic from the agent's `decoder.py` (CDR field
+   reader) on the web side so the format stays consistent.
+2. **JSON message inspector panel.** For structured topics where the
+   engineer wants to see the current decoded message at the playhead
+   (`vda_state`, `robot_state_fms`, `active_warnings`, etc.). Tree
+   view, collapsible. ~the shape of medkit's data panel, but synced
+   to the scrubber.
+3. **Configurable velocity-chart source topic.** Velocity chart
+   currently hardcoded to `/cmd_vel`. Real fleets have multiple
+   (e.g. `nav/cmd_vel`, `dock/cmd_vel`, `fl_base_controller/cmd_vel`).
+   New config: `velocity_topic` (default `/cmd_vel`, can be set per
+   session/robot via agent config).
+4. **Topic-list expander on session list + detail.** Click "N topics"
+   to expand inline; shows topic name + decoded payload size estimate.
+   Makes the "20 topics" badge meaningful at scale.
+5. **"Open in Foxglove" deep-link button** on session detail. For any
+   topic MissionDebug doesn't render natively, the engineer is one
+   click away from the standards-anchor partner. Reinforces the wedge
+   instead of competing with it.
+6. Tests:
+   - Generic scalar chart against `sensor_msgs/msg/BatteryState`
+     percentage field over time; values match the decoded message.
+   - JSON inspector renders a synthetic `vda_state` message; updates
+     when the playhead moves past a new message.
+   - Velocity chart source topic is configurable; sample_drive still
+     renders `/cmd_vel` by default.
+   - Topic list expander works for sessions with 1, 5, and 70 topics.
+
+**Deliverable:** Take the real 68-topic warehouse-AGV config from
+the prior-job example, generate a fixture session for it, render in
+the web UI. ≥70% of topics produce a visible panel; the rest are
+discoverable via the topic-list expander + Foxglove deep-link.
 
 ### Phase 2 — Operational health (target: 1 week)
 
@@ -457,12 +575,22 @@ spec, write it down — that's v2.0.5 input — but don't insert it. The
 any prior version. v2 is genuinely a different product shape — the
 biggest delta since v0 → v1.
 
-Risk-managed by phase discipline: **Phase 1 is the only one that
-matters before customer validation.** If after Phase 1 + a 30-day
-pilot with one Christian-introduced customer the fleet thesis is
-wrong, the engineering cost was 4 weeks, not 14, and the agent's
-standalone path is unaffected — engineer-tier customers continue to
-get value from v1.5 unchanged.
+Risk-managed by re-sequenced phase discipline (see Build Plan above):
+**Phase 1 + Phase 1.7 + Phase 4 (basic auth) + Phase 2 + Phase 5a
+(S3 upload) are the pre-pilot block (~7.5 weeks total).** If after
+that pre-pilot block and a 30-day pilot with one real fleet customer
+the thesis is wrong, the engineering cost was ~7.5 weeks, not 14,
+and the agent's standalone path is unaffected — engineer-tier
+customers continue to get value from v1.5 unchanged.
+
+The reason the pre-pilot block is ~3.5 weeks larger than the
+original "Phase 1 only" plan: a real 70-topic warehouse-AGV
+customer (the design target) would reject a pilot built on Phase 1
+alone — UI renders ~3% of their topics, no auth for CISO review,
+no fleet-health view, durability concern with bytes only on the
+robot. Building Phase 1 + 1.7 + 4 + 2 + 5a moves the pilot from
+"polite no" to "this is in our debug stack" — same total v2 work,
+different sequencing.
 
 If v2 lands and a real fleet customer says yes, **the product is
 no longer "post-incident replay for a single robot" — it is "the
