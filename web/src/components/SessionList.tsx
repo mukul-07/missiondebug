@@ -100,10 +100,26 @@ export function SessionList() {
                     <span className="px-1.5 py-0.5 mr-2 rounded bg-bg border border-border font-mono">
                       {s.robot_id}
                     </span>
+                    {s.subsystem ? (
+                      <span
+                        title={`subsystem: ${s.subsystem}`}
+                        className="mr-2 px-1.5 py-0.5 rounded bg-bg border border-border font-mono"
+                      >
+                        {s.subsystem}
+                      </span>
+                    ) : null}
                     {relativeTime(s.started_at)} · {fmtDuration(s.duration_ms)}
                     {s.label ? (
                       <span className="ml-2 px-2 py-0.5 rounded bg-accent/20 text-accent">
                         {s.label}
+                      </span>
+                    ) : null}
+                    {s.source === "agent" ? (
+                      <span
+                        title="ingested from a remote agent"
+                        className="ml-2 text-[10px] uppercase tracking-wide text-muted opacity-70"
+                      >
+                        via agent
                       </span>
                     ) : null}
                   </div>

@@ -42,13 +42,14 @@ def test_ingest_creates_session_and_agent(tmp_path):
     body = r.json()
     assert body == {"session_id": "robot-001_20260512T100000Z", "ingested": True}
 
-    # Session shows up in the normal list.
+    # Session shows up in the normal list with v2 fields surfaced (P1.6).
     sessions = c.get("/api/sessions").json()["sessions"]
     assert len(sessions) == 1
     s = sessions[0]
     assert s["robot_id"] == "robot-001"
     assert s["label"] == "anomaly:stall"
-    # The list endpoint doesn't surface subsystem yet (Phase 3) — that's OK.
+    assert s["subsystem"] == "navigation"
+    assert s["source"] == "agent"  # hub-ingested via P1.2
 
     # Agent was registered.
     agents = c.get("/api/v1/agents").json()["agents"]

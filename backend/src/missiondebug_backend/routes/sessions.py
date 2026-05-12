@@ -19,6 +19,11 @@ def get_router(get_db) -> APIRouter:
             "mcap_size_bytes": row.mcap_size_bytes,
             "topics": row.topics,
             "created_at": row.created_at,
+            # v2 fields (optional; null for v1.5 single-robot sessions):
+            "subsystem": row.subsystem,
+            # source: "agent" means this came in via P1.2 ingest (hub-ingested
+            # session); "local" means the backend itself wrote the MCAP file.
+            "source": "agent" if row.mcap_url else "local",
         }
 
     @router.get("", summary="List sessions, newest first")

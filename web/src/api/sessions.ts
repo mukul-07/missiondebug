@@ -9,6 +9,9 @@ export interface SessionSummary {
   topics: string[];
   created_at: number;
   annotation_count?: number;
+  // v2 (fleet) additions — optional for v1.5 single-robot sessions.
+  subsystem?: string | null;
+  source?: "agent" | "local";
 }
 
 export interface SessionListResult {

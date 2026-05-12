@@ -166,6 +166,14 @@ export function SessionDetail() {
             {meta.robot_id}
           </a>
         ) : null}
+        {meta?.subsystem ? (
+          <span
+            title={`subsystem: ${meta.subsystem}`}
+            className="text-xs px-1.5 py-0.5 rounded bg-bg border border-border font-mono text-muted"
+          >
+            {meta.subsystem}
+          </span>
+        ) : null}
         {meta?.label ? (
           <span className="px-2 py-0.5 rounded bg-accent/20 text-accent text-xs">
             {meta.label}
