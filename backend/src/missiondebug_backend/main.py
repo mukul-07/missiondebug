@@ -14,8 +14,10 @@ from fastapi.staticfiles import StaticFiles
 
 from .db import Db
 from .retention import run_periodic as run_retention, sweep_once
+from .routes.agents import get_router as agents_router
 from .routes.annotations import get_router as annotations_router
 from .routes.files import get_router as files_router
+from .routes.ingest import get_router as ingest_router
 from .routes.sessions import get_router as sessions_router
 from .scanner import scan_directory
 
@@ -115,6 +117,8 @@ def build_app(
             {"name": "annotations", "description": "Per-session timestamped notes."},
             {"name": "admin", "description": "Disk usage, manual rescan, retention sweep."},
             {"name": "system", "description": "Liveness."},
+            {"name": "ingest", "description": "Agents post session metadata to the hub (v2 fleet)."},
+            {"name": "agents", "description": "Agent heartbeats and fleet roster (v2 fleet)."},
         ],
         lifespan=lifespan,
     )
@@ -136,6 +140,9 @@ def build_app(
     app.include_router(sessions_router(get_db))
     app.include_router(files_router(get_db))
     app.include_router(annotations_router(get_db))
+    # v2 fleet endpoints — agents ingest sessions + post heartbeats.
+    app.include_router(ingest_router(get_db))
+    app.include_router(agents_router(get_db))
 
     @app.get("/healthz", tags=["system"], summary="Liveness probe")
     def healthz():

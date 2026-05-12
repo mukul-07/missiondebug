@@ -1,0 +1,94 @@
+"""Hub ingest endpoint — agents post session metadata after each save.
+
+The agent runs on the robot, writes MCAP files locally, and (when
+`hub_url` is configured) POSTs a small JSON blob to this endpoint
+describing each saved session. The hub stores the metadata + a URL
+pointing back to the agent for on-demand MCAP retrieval.
+
+v2 Phase 1 wiring: see v2-SPEC.md §Phase 1.
+"""
+
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends
+from pydantic import BaseModel, Field
+
+from ..db import Db, SessionRow, now_ms
+
+
+class SessionIngest(BaseModel):
+    """Payload posted by the agent after each session save.
+
+    Matches the agent's SessionMetadata + the optional mcap_url
+    pointing back at the agent so the hub can stream-proxy on demand.
+    Subsystem is optional per Hard Rule 23.
+    """
+
+    session_id: str = Field(min_length=1, max_length=200)
+    robot_id: str = Field(min_length=1, max_length=200)
+    started_at: int = Field(ge=0)
+    ended_at: int = Field(ge=0)
+    duration_ms: int = Field(ge=0)
+    label: str | None = None
+    topics: list[str] = Field(default_factory=list)
+    mcap_size_bytes: int = Field(ge=0)
+    mcap_url: str = Field(
+        description="HTTP URL the hub will use to fetch MCAP bytes on demand."
+    )
+    subsystem: str | None = Field(default=None, max_length=120)
+    agent_url: str | None = Field(
+        default=None,
+        description="Base URL of the reporting agent (for the agents table).",
+    )
+    agent_version: str | None = Field(default=None, max_length=40)
+
+
+class SessionIngestResponse(BaseModel):
+    session_id: str
+    ingested: bool
+
+
+def get_router(get_db) -> APIRouter:
+    router = APIRouter(prefix="/api/v1", tags=["ingest"])
+
+    @router.post(
+        "/sessions/ingest",
+        response_model=SessionIngestResponse,
+        summary="Agent posts session metadata to the hub",
+    )
+    def ingest(
+        payload: SessionIngest,
+        db: Db = Depends(get_db),
+    ) -> SessionIngestResponse:
+        """Record an agent-reported session. The MCAP itself stays on the
+        agent; this endpoint just stores metadata + the URL to fetch it.
+
+        Also upserts the agents table so heartbeats and ingests share one
+        view of which robots have reported in.
+        """
+        db.upsert_agent(
+            robot_id=payload.robot_id,
+            agent_url=payload.agent_url,
+            agent_version=payload.agent_version,
+            subsystem=payload.subsystem,
+        )
+
+        # mcap_path stays empty for hub-ingested sessions — the hub does
+        # not hold the bytes locally. mcap_url is what matters.
+        db.upsert_session(SessionRow(
+            id=payload.session_id,
+            robot_id=payload.robot_id,
+            started_at=payload.started_at,
+            ended_at=payload.ended_at,
+            duration_ms=payload.duration_ms,
+            label=payload.label,
+            mcap_path="",
+            mcap_size_bytes=payload.mcap_size_bytes,
+            topics=payload.topics,
+            created_at=now_ms(),
+            mcap_url=payload.mcap_url,
+            subsystem=payload.subsystem,
+        ))
+        return SessionIngestResponse(session_id=payload.session_id, ingested=True)
+
+    return router
