@@ -118,6 +118,23 @@ class AnomalyConfig(BaseModel):
         return self.stall
 
 
+class HubConfig(BaseModel):
+    """v2 (fleet): optional config to push session metadata + heartbeats
+    to a central hub. When unset, the agent runs in v1.5 standalone mode
+    (Hard Rule 18: single-robot path must keep working unchanged)."""
+
+    url: str | None = None
+    auth_token: str | None = None
+    heartbeat_interval_seconds: float = Field(default=60.0, gt=0)
+    # The URL the hub uses to reach this agent back. Defaults to
+    # http://<http_host>:<http_port> if unset, but operators can override
+    # when the agent sits behind a NAT or reverse proxy.
+    agent_url: str | None = None
+    # Optional free-form subsystem tag attached to every session this
+    # agent reports. Hard Rule 23: no enforced hierarchy.
+    subsystem: str | None = None
+
+
 class AgentConfig(BaseModel):
     robot_id: str = "robot-001"
     buffer_seconds: float = Field(default=60.0, gt=0)
@@ -130,6 +147,8 @@ class AgentConfig(BaseModel):
     http_host: str = "127.0.0.1"
     http_port: int = 7000
     anomaly: AnomalyConfig = AnomalyConfig()
+    # v2 (fleet): optional hub registration. Empty = standalone v1.5 mode.
+    hub: HubConfig = HubConfig()
 
     @classmethod
     def load(cls, path: str | Path) -> AgentConfig:
