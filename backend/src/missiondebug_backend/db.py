@@ -1,4 +1,4 @@
-"""SQLite session index. Schema per SPEC §Phase 4."""
+"""SQLite session index. v1.5 schema + v2 (fleet) additions."""
 
 from __future__ import annotations
 
@@ -21,10 +21,17 @@ CREATE TABLE IF NOT EXISTS sessions (
   mcap_path TEXT NOT NULL,
   mcap_size_bytes INTEGER NOT NULL,
   topics_json TEXT NOT NULL,
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  -- v2 additions (Hard Rule 18: agent stays standalone-capable, so these
+  -- are nullable and default to NULL for v1.5 single-robot installs).
+  mcap_url TEXT,         -- if set, hub fetches from this URL instead of mcap_path
+  subsystem TEXT         -- free-form domain tag, e.g. "navigation" (Hard Rule 23)
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_started_at
   ON sessions(started_at DESC);
+-- idx_sessions_subsystem is created post-migration (see _migrate_v2_columns)
+-- because the column doesn't exist on legacy v1.5 databases until ALTER TABLE
+-- has run.
 
 CREATE TABLE IF NOT EXISTS annotations (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -36,7 +43,40 @@ CREATE TABLE IF NOT EXISTS annotations (
 );
 CREATE INDEX IF NOT EXISTS idx_annotations_session
   ON annotations(session_id, time_ns);
+
+-- v2 (fleet): one row per agent that has ever reported to this hub.
+-- last_heartbeat is updated each ping; agent_url is where the hub
+-- proxies MCAP fetches from when a session has no mcap_url set.
+CREATE TABLE IF NOT EXISTS agents (
+  robot_id TEXT PRIMARY KEY,
+  first_seen INTEGER NOT NULL,
+  last_heartbeat INTEGER,
+  agent_version TEXT,
+  agent_url TEXT,
+  subsystem TEXT
+);
+
+-- v2 (fleet): heartbeat history. TTL-trimmed by prune_old_heartbeats.
+-- Used by Phase 2 (operational health) and Phase 3 (fleet observability).
+CREATE TABLE IF NOT EXISTS agent_heartbeats (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  robot_id TEXT NOT NULL,
+  heartbeat_at INTEGER NOT NULL,
+  buffer_size INTEGER,
+  FOREIGN KEY (robot_id) REFERENCES agents(robot_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_heartbeats_robot_at
+  ON agent_heartbeats(robot_id, heartbeat_at DESC);
 """
+
+
+# Per-table v2 column adds. Applied on every Db init so existing v1.5
+# databases gain the new columns without manual migration. Each entry
+# is (table, column, type_def).
+_V2_COLUMN_ADDS = [
+    ("sessions", "mcap_url", "TEXT"),
+    ("sessions", "subsystem", "TEXT"),
+]
 
 
 @dataclass
@@ -70,9 +110,13 @@ class SessionRow:
     mcap_size_bytes: int
     topics: list[str]
     created_at: int
+    # v2 additions — optional, default None for v1.5 callers.
+    mcap_url: str | None = None
+    subsystem: str | None = None
 
     @classmethod
     def from_row(cls, r: sqlite3.Row) -> "SessionRow":
+        keys = r.keys()
         return cls(
             id=r["id"],
             robot_id=r["robot_id"],
@@ -84,6 +128,29 @@ class SessionRow:
             mcap_size_bytes=r["mcap_size_bytes"],
             topics=json.loads(r["topics_json"]),
             created_at=r["created_at"],
+            mcap_url=r["mcap_url"] if "mcap_url" in keys else None,
+            subsystem=r["subsystem"] if "subsystem" in keys else None,
+        )
+
+
+@dataclass
+class AgentRow:
+    robot_id: str
+    first_seen: int
+    last_heartbeat: int | None
+    agent_version: str | None
+    agent_url: str | None
+    subsystem: str | None
+
+    @classmethod
+    def from_row(cls, r: sqlite3.Row) -> "AgentRow":
+        return cls(
+            robot_id=r["robot_id"],
+            first_seen=r["first_seen"],
+            last_heartbeat=r["last_heartbeat"],
+            agent_version=r["agent_version"],
+            agent_url=r["agent_url"],
+            subsystem=r["subsystem"],
         )
 
 
@@ -93,7 +160,24 @@ class Db:
         Path(self._path).parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as conn:
             conn.executescript(SCHEMA)
+            self._migrate_v2_columns(conn)
             conn.commit()
+
+    def _migrate_v2_columns(self, conn: sqlite3.Connection) -> None:
+        """Add v2 columns to existing v1.5 databases without forcing a manual
+        migration. SQLite's CREATE TABLE IF NOT EXISTS doesn't alter existing
+        tables, so we check pragma + ALTER TABLE column-by-column. Idempotent.
+        """
+        for table, column, type_def in _V2_COLUMN_ADDS:
+            cur = conn.execute(f"PRAGMA table_info({table})")
+            existing = {row[1] for row in cur.fetchall()}
+            if column not in existing:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {type_def}")
+        # Indexes on v2 columns: created here, after the columns exist.
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_sessions_subsystem "
+            "ON sessions(subsystem) WHERE subsystem IS NOT NULL"
+        )
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
@@ -113,14 +197,15 @@ class Db:
                 """
                 INSERT OR REPLACE INTO sessions
                   (id, robot_id, started_at, ended_at, duration_ms, label,
-                   mcap_path, mcap_size_bytes, topics_json, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   mcap_path, mcap_size_bytes, topics_json, created_at,
+                   mcap_url, subsystem)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     row.id, row.robot_id, row.started_at, row.ended_at,
                     row.duration_ms, row.label, row.mcap_path,
                     row.mcap_size_bytes, json.dumps(row.topics),
-                    row.created_at,
+                    row.created_at, row.mcap_url, row.subsystem,
                 ),
             )
             conn.commit()
@@ -209,6 +294,109 @@ class Db:
             cur = conn.execute("SELECT * FROM sessions WHERE id = ?", (session_id,))
             r = cur.fetchone()
             return SessionRow.from_row(r) if r else None
+
+    # ---- v2 agents + heartbeats ------------------------------------
+
+    def upsert_agent(
+        self,
+        *,
+        robot_id: str,
+        agent_url: str | None = None,
+        agent_version: str | None = None,
+        subsystem: str | None = None,
+    ) -> None:
+        """Register or update an agent. Called by the ingest + heartbeat
+        endpoints. first_seen is set on initial insert and never overwritten.
+        Other fields are updated when provided (NULL leaves them alone)."""
+        ts = now_ms()
+        with self.connect() as conn:
+            existing = conn.execute(
+                "SELECT robot_id FROM agents WHERE robot_id = ?", (robot_id,)
+            ).fetchone()
+            if existing is None:
+                conn.execute(
+                    """
+                    INSERT INTO agents
+                      (robot_id, first_seen, agent_url, agent_version, subsystem)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (robot_id, ts, agent_url, agent_version, subsystem),
+                )
+            else:
+                # Only overwrite columns the caller actually supplied.
+                sets, params = [], []
+                if agent_url is not None:
+                    sets.append("agent_url = ?")
+                    params.append(agent_url)
+                if agent_version is not None:
+                    sets.append("agent_version = ?")
+                    params.append(agent_version)
+                if subsystem is not None:
+                    sets.append("subsystem = ?")
+                    params.append(subsystem)
+                if sets:
+                    params.append(robot_id)
+                    conn.execute(
+                        f"UPDATE agents SET {', '.join(sets)} WHERE robot_id = ?",
+                        params,
+                    )
+            conn.commit()
+
+    def record_heartbeat(
+        self,
+        *,
+        robot_id: str,
+        buffer_size: int | None = None,
+        agent_url: str | None = None,
+        agent_version: str | None = None,
+    ) -> None:
+        """Update agents.last_heartbeat and append a row to agent_heartbeats.
+        Auto-creates the agent row if first heartbeat. agent_url + agent_version
+        are updated only when provided (so heartbeats stay cheap).
+        """
+        # Ensure agent row exists (no-op if already there).
+        self.upsert_agent(
+            robot_id=robot_id,
+            agent_url=agent_url,
+            agent_version=agent_version,
+        )
+        ts = now_ms()
+        with self.connect() as conn:
+            conn.execute(
+                "UPDATE agents SET last_heartbeat = ? WHERE robot_id = ?",
+                (ts, robot_id),
+            )
+            conn.execute(
+                """
+                INSERT INTO agent_heartbeats (robot_id, heartbeat_at, buffer_size)
+                VALUES (?, ?, ?)
+                """,
+                (robot_id, ts, buffer_size),
+            )
+            conn.commit()
+
+    def get_agent(self, robot_id: str) -> AgentRow | None:
+        with self.connect() as conn:
+            r = conn.execute(
+                "SELECT * FROM agents WHERE robot_id = ?", (robot_id,)
+            ).fetchone()
+            return AgentRow.from_row(r) if r else None
+
+    def list_agents(self) -> list[AgentRow]:
+        with self.connect() as conn:
+            cur = conn.execute("SELECT * FROM agents ORDER BY robot_id")
+            return [AgentRow.from_row(r) for r in cur.fetchall()]
+
+    def prune_old_heartbeats(self, before_ms: int) -> int:
+        """Delete heartbeats older than before_ms. Returns rows deleted.
+        Called by a periodic task in Phase 2."""
+        with self.connect() as conn:
+            cur = conn.execute(
+                "DELETE FROM agent_heartbeats WHERE heartbeat_at < ?",
+                (before_ms,),
+            )
+            conn.commit()
+            return cur.rowcount
 
     # ---- retention --------------------------------------------------
 
