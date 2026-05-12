@@ -234,6 +234,16 @@ curl -X POST http://<robot>:7000/sessions/save \
 
 Full endpoint reference + curl cookbook: [`docs/API.md`](./docs/API.md).
 
+## Integrations
+
+MissionDebug captures session data when its built-in detectors fire — but your existing monitoring stack already detects plenty of things the built-in detectors don't. Point those external alerts at the agent's save endpoint and you get root-cause replay for free:
+
+- **Generic webhook** — `curl -X POST .../sessions/save -d '{"label":"..."}'` from any monitoring tool
+- **[Prometheus Alertmanager](./docs/INTEGRATIONS.md#2-prometheus-alertmanager-5-minutes)** — webhook receiver + small shim that turns `alerts[]` into a label
+- **[ros2_medkit Triggers](./docs/INTEGRATIONS.md#3-ros2_medkit-triggers-10-minutes)** — bridge script that subscribes to medkit's SSE event stream and forwards triggers
+
+Full recipes + working scripts: [`docs/INTEGRATIONS.md`](./docs/INTEGRATIONS.md).
+
 ## How it's built
 
 - **Agent** (Python, `agent/`) — rclpy subscribers → per-topic ring buffers in RAM (rate-limited & sized) → MCAP writer → control HTTP API on `:7000`. Built-in detectors (stall, path-deviation, battery_low, topic_dropout) plus a config-driven rule engine; all detectors auto-save and label the resulting session.
