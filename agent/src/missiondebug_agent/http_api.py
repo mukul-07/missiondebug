@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -17,6 +17,9 @@ from pydantic import BaseModel
 from .config import AgentConfig
 from .mcap_writer import SessionMetadata, write_session
 from .ring_buffer import RingBuffer
+
+if TYPE_CHECKING:
+    from .hub_client import HubClient
 
 log = logging.getLogger(__name__)
 
@@ -45,10 +48,13 @@ def save_now(
     *,
     label: str | None = None,
     schema_loader: Callable[[str], str] | None = None,
+    hub_client: "HubClient | None" = None,
 ) -> SaveResponse:
     """Flush the ring buffer to a new MCAP file. Returns SaveResponse.
 
     Used both by the HTTP endpoint and by the anomaly callback (no HTTP roundtrip).
+    When `hub_client` is provided, also forwards the session metadata to the
+    configured hub (v2 fleet). Hub failures are non-fatal — Hard Rule 18.
     """
     snap = ring.snapshot()
     if not snap:
@@ -73,6 +79,19 @@ def save_now(
         "Saved session %s (%d msgs, %.2fs, %s)",
         meta.session_id, len(snap), meta.duration_ns / 1e9, meta.label,
     )
+
+    # v2 (fleet): forward to hub if configured. Non-fatal on failure.
+    if hub_client is not None:
+        hub_client.report_session({
+            "session_id": meta.session_id,
+            "started_at": meta.started_wall_ns // 1_000_000,
+            "ended_at": meta.ended_wall_ns // 1_000_000,
+            "duration_ms": meta.duration_ns // 1_000_000,
+            "label": meta.label,
+            "topics": meta.topics,
+            "mcap_size_bytes": meta.size_bytes,
+        })
+
     return SaveResponse(
         session_id=meta.session_id,
         path=meta.path,
@@ -88,6 +107,7 @@ def build_app(
     ring: RingBuffer,
     *,
     schema_loader: Callable[[str], str] | None = None,
+    hub_client: "HubClient | None" = None,
 ) -> FastAPI:
     app = FastAPI(
         title="MissionDebug Agent",
@@ -119,11 +139,17 @@ def build_app(
     )
     def save_session(req: SaveRequest | None = None) -> SaveResponse:
         """Flush the in-memory rolling buffer to an MCAP file with an optional label.
-        Returns the session metadata. 409 if the buffer is empty."""
+        Returns the session metadata. 409 if the buffer is empty.
+
+        When the agent is configured with a hub URL, the session metadata is
+        also forwarded to the hub (best effort; failures don't affect the
+        local save).
+        """
         return save_now(
             config, ring,
             label=(req.label if req else None),
             schema_loader=schema_loader,
+            hub_client=hub_client,
         )
 
     return app

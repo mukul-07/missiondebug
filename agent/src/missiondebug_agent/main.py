@@ -17,7 +17,12 @@ from .detectors.path_deviation import PathDeviationAnomaly, PathDeviationDetecto
 from .detectors.stall import StallAnomaly, StallDetector
 from .detectors.topic_dropout import DropoutAnomaly, TopicDropoutDetector
 from .http_api import build_app, save_now
+from .hub_client import HubClient, HubClientConfig
 from .ring_buffer import RingBuffer
+
+# Bumped per release; reported to the hub in every heartbeat so fleet
+# operators can spot agents lagging behind on rollouts.
+AGENT_VERSION = "1.5.0"
 
 log = logging.getLogger("missiondebug_agent")
 
@@ -63,7 +68,25 @@ def main() -> None:
         window_seconds=config.buffer_seconds,
         max_total_bytes=config.max_total_bytes,
     )
-    app = build_app(config, ring)
+
+    # v2 (fleet): optional hub registration. Started here so it's running by
+    # the time the first save fires; stopped in the finally block below.
+    hub_client: HubClient | None = None
+    if config.hub.url:
+        agent_url = config.hub.agent_url or f"http://{config.http_host}:{config.http_port}"
+        hub_client = HubClient(HubClientConfig(
+            hub_url=config.hub.url,
+            robot_id=config.robot_id,
+            agent_url=agent_url,
+            auth_token=config.hub.auth_token,
+            agent_version=AGENT_VERSION,
+            subsystem=config.hub.subsystem,
+            heartbeat_interval_seconds=config.hub.heartbeat_interval_seconds,
+        ))
+        hub_client.start()
+        log.info("Hub sync enabled (url=%s, robot=%s)", config.hub.url, config.robot_id)
+
+    app = build_app(config, ring, hub_client=hub_client)
 
     # Multiple detectors may want callbacks on the same topic (e.g. /tf used
     # by path-deviation AND a config rule). Stack them per topic and present
@@ -79,7 +102,7 @@ def main() -> None:
     def on_stall(_a: StallAnomaly) -> None:
         log.info("Auto-saving session due to stall anomaly")
         try:
-            r = save_now(config, ring, label="anomaly:stall")
+            r = save_now(config, ring, label="anomaly:stall", hub_client=hub_client)
             log.info("Auto-saved %s (%.2fs)", r.session_id, r.duration_s)
         except Exception:
             log.exception("Auto-save failed (stall)")
@@ -108,7 +131,7 @@ def main() -> None:
         def on_path_deviation(a: PathDeviationAnomaly) -> None:
             log.info("Auto-saving session due to path-deviation anomaly")
             try:
-                r = save_now(config, ring, label="anomaly:path-deviation")
+                r = save_now(config, ring, label="anomaly:path-deviation", hub_client=hub_client)
                 log.info("Auto-saved %s (%.2fs, drift %.2fm)",
                          r.session_id, r.duration_s, a.distance_m)
             except Exception:
@@ -149,7 +172,7 @@ def main() -> None:
             label = f"anomaly:{a.name}"
             log.info("Auto-saving session: rule %s", a.name)
             try:
-                r = save_now(config, ring, label=label)
+                r = save_now(config, ring, label=label, hub_client=hub_client)
                 log.info("Auto-saved %s (%.2fs, matched=%r)",
                          r.session_id, r.duration_s, a.matched_value)
             except Exception:
@@ -174,7 +197,7 @@ def main() -> None:
         def on_dropout(a: DropoutAnomaly) -> None:
             log.info("Auto-saving session: dropout on %s", a.topic)
             try:
-                r = save_now(config, ring, label=f"anomaly:{a.name}")
+                r = save_now(config, ring, label=f"anomaly:{a.name}", hub_client=hub_client)
                 log.info("Auto-saved %s (%.2fs, silence %.2fs)",
                          r.session_id, r.duration_s, a.silence_ns / 1e9)
             except Exception:
@@ -216,6 +239,8 @@ def main() -> None:
     finally:
         if dropout_detector is not None:
             dropout_detector.stop()
+        if hub_client is not None:
+            hub_client.stop()
         bridge.shutdown()
 
 
