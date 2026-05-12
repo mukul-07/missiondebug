@@ -127,7 +127,7 @@ Click a session → timeline + chart + pose track render. Drag the scrubber, hit
 When the robot does something weird but no rule fired, capture the last 60s yourself:
 
 ```bash
-curl -X POST http://<robot>:7000/api/save -H 'Content-Type: application/json' \
+curl -X POST http://<robot>:7000/sessions/save -H 'Content-Type: application/json' \
   -d '{"label":"weird-behavior-after-corner"}'
 ```
 
@@ -214,6 +214,25 @@ timeout 6 ros2 topic pub -r 10 /cmd_vel geometry_msgs/Twist '{linear: {x: 0.0}}'
 - **ROS 1 + ROS 2 env mixed** — if your shell shows `ROS_MASTER_URI` alongside `ROS_DISTRO=humble`, your `~/.bashrc` is sourcing both. Comment out the noetic line.
 
 ---
+
+## API
+
+Both services expose interactive Swagger UI at `/docs` and OpenAPI JSON at `/openapi.json`:
+
+```bash
+open http://<robot>:7000/docs        # agent (capture)
+open http://<robot>:8000/docs        # backend (sessions, files, annotations, admin)
+```
+
+Trigger a session save from your existing monitoring with one POST:
+
+```bash
+curl -X POST http://<robot>:7000/sessions/save \
+  -H 'Content-Type: application/json' \
+  -d '{"label":"alertmanager:critical-latency"}'
+```
+
+Full endpoint reference + curl cookbook: [`docs/API.md`](./docs/API.md).
 
 ## How it's built
 

@@ -18,8 +18,10 @@ _CHUNK = 1024 * 1024
 def get_router(get_db) -> APIRouter:
     router = APIRouter(prefix="/api/sessions", tags=["files"])
 
-    @router.get("/{session_id}/mcap")
+    @router.get("/{session_id}/mcap", summary="Stream the session's MCAP file (supports Range)")
     def get_mcap(session_id: str, request: Request, db: Db = Depends(get_db)):
+        """Returns the raw MCAP bytes. Honors HTTP Range requests so the
+        browser scrubber can fetch arbitrary chunks for fast seek."""
         row = db.get_session(session_id)
         if row is None:
             raise HTTPException(404, "session not found")

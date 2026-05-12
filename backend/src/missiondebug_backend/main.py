@@ -97,7 +97,27 @@ def build_app(
                 except (asyncio.CancelledError, Exception):
                     pass
 
-    app = FastAPI(title="MissionDebug Backend", lifespan=lifespan)
+    app = FastAPI(
+        title="MissionDebug Backend",
+        description=(
+            "Indexes captured MCAP sessions, serves them with HTTP Range "
+            "for browser-side replay, and manages disk retention. The web "
+            "UI is mounted at the root when `--web-dir` is set; the API "
+            "lives under `/api/*`. See https://github.com/mukul-07/missiondebug "
+            "for the architecture and the agent that produces the MCAP files."
+        ),
+        version="1.5.0",
+        license_info={"name": "MIT", "url": "https://github.com/mukul-07/missiondebug/blob/main/LICENSE"},
+        contact={"name": "MissionDebug", "url": "https://github.com/mukul-07/missiondebug"},
+        openapi_tags=[
+            {"name": "sessions", "description": "List, filter, and inspect captured sessions."},
+            {"name": "files", "description": "Stream MCAP bytes with HTTP Range — used by the browser scrubber."},
+            {"name": "annotations", "description": "Per-session timestamped notes."},
+            {"name": "admin", "description": "Disk usage, manual rescan, retention sweep."},
+            {"name": "system", "description": "Liveness."},
+        ],
+        lifespan=lifespan,
+    )
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[
@@ -117,17 +137,20 @@ def build_app(
     app.include_router(files_router(get_db))
     app.include_router(annotations_router(get_db))
 
-    @app.get("/healthz")
+    @app.get("/healthz", tags=["system"], summary="Liveness probe")
     def healthz():
+        """Returns `{"ok": true}` when the backend is up. Use as your container/systemd healthcheck."""
         return {"ok": True}
 
-    @app.post("/api/admin/rescan")
+    @app.post("/api/admin/rescan", tags=["admin"], summary="Rescan sessions directory for new MCAPs")
     def rescan():
+        """Force an immediate scan of the configured sessions directory. Normally happens every 5s."""
         n = scan_directory(sessions_dir, db)
         return {"indexed": n}
 
-    @app.get("/api/admin/disk")
+    @app.get("/api/admin/disk", tags=["admin"], summary="Disk usage + retention cap")
     def disk_usage():
+        """Total MCAP bytes on disk, configured cap, and whether retention is enabled."""
         cap_bytes = max_disk_mb * 1024 * 1024
         used = db.total_mcap_bytes()
         return {
@@ -138,7 +161,7 @@ def build_app(
             "session_count": len(db.list_sessions(limit=10**9)),
         }
 
-    @app.post("/api/admin/sweep")
+    @app.post("/api/admin/sweep", tags=["admin"], summary="Force a retention sweep")
     def sweep():
         cap_bytes = max_disk_mb * 1024 * 1024
         result = sweep_once(db, cap_bytes)

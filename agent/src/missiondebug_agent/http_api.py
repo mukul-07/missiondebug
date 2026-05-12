@@ -89,14 +89,37 @@ def build_app(
     *,
     schema_loader: Callable[[str], str] | None = None,
 ) -> FastAPI:
-    app = FastAPI(title="MissionDebug Agent")
+    app = FastAPI(
+        title="MissionDebug Agent",
+        description=(
+            "Local control plane for the agent. The agent runs on the robot, "
+            "maintains a 60s rolling buffer of selected ROS 2 topics, and "
+            "writes an MCAP file when a detector fires or when this API is "
+            "called. Bind to loopback only — there is no authentication."
+        ),
+        version="1.5.0",
+        license_info={"name": "MIT", "url": "https://github.com/mukul-07/missiondebug/blob/main/LICENSE"},
+        contact={"name": "MissionDebug", "url": "https://github.com/mukul-07/missiondebug"},
+        openapi_tags=[
+            {"name": "capture", "description": "Flush the rolling buffer to a session file."},
+            {"name": "system", "description": "Liveness + buffer status."},
+        ],
+    )
 
-    @app.get("/healthz")
+    @app.get("/healthz", tags=["system"], summary="Liveness + current buffer size")
     def healthz():
+        """Returns `{ok, buffer_size, robot_id}`. buffer_size is the number of buffered messages across all topics."""
         return {"ok": True, "buffer_size": len(ring), "robot_id": config.robot_id}
 
-    @app.post("/sessions/save", response_model=SaveResponse)
+    @app.post(
+        "/sessions/save",
+        response_model=SaveResponse,
+        tags=["capture"],
+        summary="Capture the current buffer as a new session",
+    )
     def save_session(req: SaveRequest | None = None) -> SaveResponse:
+        """Flush the in-memory rolling buffer to an MCAP file with an optional label.
+        Returns the session metadata. 409 if the buffer is empty."""
         return save_now(
             config, ring,
             label=(req.label if req else None),

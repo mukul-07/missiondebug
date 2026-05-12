@@ -21,13 +21,14 @@ def get_router(get_db) -> APIRouter:
             "created_at": row.created_at,
         }
 
-    @router.get("")
+    @router.get("", summary="List sessions, newest first")
     def list_sessions(
         limit: int = Query(50, ge=1, le=200),
         offset: int = Query(0, ge=0),
         robot_id: str | None = Query(None),
         db: Db = Depends(get_db),
     ):
+        """Returns sessions plus the set of known robot_ids for the filter dropdown."""
         rows = db.list_sessions(limit=limit, offset=offset, robot_id=robot_id)
         counts = db.annotation_counts()
         return {
@@ -38,8 +39,9 @@ def get_router(get_db) -> APIRouter:
             "robots": db.list_robot_ids(),
         }
 
-    @router.get("/{session_id}")
+    @router.get("/{session_id}", summary="Get a single session by id")
     def get_session(session_id: str, db: Db = Depends(get_db)):
+        """Returns the session row plus its annotation count. 404 if not found."""
         row = db.get_session(session_id)
         if row is None:
             raise HTTPException(404, "session not found")

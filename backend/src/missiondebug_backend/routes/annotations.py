@@ -28,14 +28,18 @@ def _serialize(a: AnnotationRow) -> dict:
 def get_router(get_db) -> APIRouter:
     router = APIRouter(tags=["annotations"])
 
-    @router.get("/api/sessions/{session_id}/annotations")
+    @router.get("/api/sessions/{session_id}/annotations", summary="List annotations for a session")
     def list_for_session(session_id: str, db: Db = Depends(get_db)):
         if db.get_session(session_id) is None:
             raise HTTPException(404, "session not found")
         rows = db.list_annotations(session_id)
         return {"annotations": [_serialize(r) for r in rows]}
 
-    @router.post("/api/sessions/{session_id}/annotations", status_code=201)
+    @router.post(
+        "/api/sessions/{session_id}/annotations",
+        status_code=201,
+        summary="Create an annotation at a timestamp",
+    )
     def create_for_session(
         session_id: str,
         payload: AnnotationCreate,
@@ -46,7 +50,7 @@ def get_router(get_db) -> APIRouter:
         row = db.insert_annotation(session_id, payload.time_ns, payload.body.strip())
         return _serialize(row)
 
-    @router.put("/api/annotations/{annotation_id}")
+    @router.put("/api/annotations/{annotation_id}", summary="Update an annotation's body")
     def update(
         annotation_id: int,
         payload: AnnotationUpdate,
@@ -57,7 +61,7 @@ def get_router(get_db) -> APIRouter:
             raise HTTPException(404, "annotation not found")
         return _serialize(row)
 
-    @router.delete("/api/annotations/{annotation_id}", status_code=204)
+    @router.delete("/api/annotations/{annotation_id}", status_code=204, summary="Delete an annotation")
     def delete(annotation_id: int, db: Db = Depends(get_db)):
         if not db.delete_annotation(annotation_id):
             raise HTTPException(404, "annotation not found")
