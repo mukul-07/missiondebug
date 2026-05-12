@@ -1,5 +1,13 @@
 # MissionDebug
 
+[![Tests](https://github.com/mukul-07/missiondebug/actions/workflows/test.yml/badge.svg)](https://github.com/mukul-07/missiondebug/actions/workflows/test.yml)
+[![Container](https://github.com/mukul-07/missiondebug/actions/workflows/publish-image.yml/badge.svg)](https://github.com/mukul-07/missiondebug/pkgs/container/missiondebug)
+[![codecov](https://codecov.io/gh/mukul-07/missiondebug/branch/main/graph/badge.svg)](https://codecov.io/gh/mukul-07/missiondebug)
+[![ROS 2: Humble | Jazzy](https://img.shields.io/badge/ROS%202-Humble%20%7C%20Jazzy-blue)](https://docs.ros.org/)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
+[![Quality Level 4](https://img.shields.io/badge/Quality-Level%204-yellow)](QUALITY_DECLARATION.md)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 > **MCAP-native incident replay for ROS 2 robots.** Capture the 60 seconds before a failure, then scrub it like a black box in Foxglove.
 
 When a robot misbehaves, you want the 60 seconds *before* — what it was seeing, what it was commanding, what state it was in. MissionDebug runs alongside your ROS 2 stack, keeps a rolling buffer of the topics you care about, and writes a standard MCAP file the moment something goes wrong. Detectors fire automatically (stall, path deviation, low battery, topic dropout, or any rule you write in YAML). Open the web UI, click a session, scrub the timeline. Annotate the moment, share a deep-linked URL with a teammate.
