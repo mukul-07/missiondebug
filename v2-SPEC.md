@@ -92,6 +92,14 @@ Three deployment shapes, all supported from a single codebase:
 - **RBAC (three roles).** viewer, editor, admin. Sufficient for
   small-to-mid robotics teams. No team management, no audit log —
   those are v2.5+.
+- **Optional subsystem tagging on sessions.** A free-form `subsystem`
+  string (default empty) per session and per agent. Lets fleet
+  customers slice by domain — *"all anomalies in the navigation
+  stack this week"*. Maps naturally onto the entity-tree vocabulary
+  already used by ros2_medkit (areas / components / apps), so teams
+  running both products can carry one mental model across them.
+  Free-form by design — no enforced hierarchy, no required values,
+  no schema migration for v1.5 customers who don't use it.
 
 ## What v2 IS NOT
 
@@ -359,6 +367,13 @@ new ones:
     operational concerns that belong to ros2_medkit or similar
     live-ops tools, not to a forensic replay product. Crossing this
     line dilutes the wedge.
+23. **`subsystem` stays optional and free-form.** No enforced
+    hierarchy, no required values, no validation against an entity
+    tree, no auto-import from medkit. Customers who don't use it
+    see no change. Customers who do use it pick their own naming
+    convention. If a future version wants stricter modelling
+    (e.g. `area/component/app` tuples), that ships as v2.5+ and is
+    additive.
 
 ## Non-Functional Requirements (delta from v1.5)
 
