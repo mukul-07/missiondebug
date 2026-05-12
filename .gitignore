@@ -38,3 +38,6 @@ sessions/
 # Env
 .env
 .env.local
+
+# Local-only session memory for Claude — not part of the project history.
+CLAUDE.md

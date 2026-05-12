@@ -98,6 +98,13 @@ curl 'http://<robot>:8000/api/sessions?robot_id=my-robot'
 curl http://<robot>:8000/api/sessions/sample_drive
 ```
 
+**Fleet-readiness.** Each session carries a `robot_id` (set in the agent's
+config). The list response also returns `robots: [...]` — the set of
+distinct `robot_id`s the backend has indexed. The UI uses this for a
+per-robot filter; integrations can use it to route sessions to per-robot
+storage or alerting. Single-robot deployments today see "1 robot"; fleet
+operators see the actual count without any extra configuration.
+
 ### Files
 
 | Method | Path | Summary |

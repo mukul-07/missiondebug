@@ -37,10 +37,23 @@ export function SessionList() {
     setParams(params, { replace: true });
   };
 
+  const totalRobots = robots.length;
+  const summary = sessions.length === 0
+    ? null
+    : `${sessions.length} session${sessions.length === 1 ? "" : "s"}` +
+      (robotFilter
+        ? ` for ${robotFilter}`
+        : totalRobots > 0
+        ? ` across ${totalRobots} robot${totalRobots === 1 ? "" : "s"}`
+        : "");
+
   return (
     <div className="p-4 grid gap-2 max-w-3xl">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg">Sessions</h2>
+        <div className="flex items-baseline gap-2">
+          <h2 className="text-lg">Sessions</h2>
+          {summary ? <span className="text-xs text-muted">{summary}</span> : null}
+        </div>
         {robots.length > 0 && (
           <div className="flex gap-1 text-xs">
             <button

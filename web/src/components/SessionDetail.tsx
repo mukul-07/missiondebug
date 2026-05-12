@@ -155,8 +155,17 @@ export function SessionDetail() {
 
   return (
     <div className="p-4 grid gap-3">
-      <div className="flex items-baseline gap-3">
+      <div className="flex items-baseline gap-3 flex-wrap">
         <h2 className="text-lg font-mono">{meta?.id ?? id}</h2>
+        {meta?.robot_id ? (
+          <a
+            href={`/?robot=${encodeURIComponent(meta.robot_id)}`}
+            title={`See other sessions from ${meta.robot_id}`}
+            className="text-xs px-1.5 py-0.5 rounded bg-bg border border-border font-mono text-muted hover:text-text hover:border-accent"
+          >
+            {meta.robot_id}
+          </a>
+        ) : null}
         {meta?.label ? (
           <span className="px-2 py-0.5 rounded bg-accent/20 text-accent text-xs">
             {meta.label}
