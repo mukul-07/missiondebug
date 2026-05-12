@@ -1,0 +1,58 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "agent/**"
+      - "backend/**"
+      - "Makefile"
+      - ".github/workflows/test.yml"
+  pull_request:
+    paths:
+      - "agent/**"
+      - "backend/**"
+      - "Makefile"
+      - ".github/workflows/test.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pytest:
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            agent/uv.lock
+            backend/uv.lock
+
+      - name: Install agent + backend (venvs)
+        run: |
+          cd agent   && uv sync
+          cd ../backend && uv sync
+          # Backend tests reuse the agent's mcap_writer to seed sessions.
+          .venv/bin/python -m pip install -e ../agent
+
+      - name: Run tests
+        run: make test
