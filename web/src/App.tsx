@@ -1,6 +1,7 @@
 import { Link, Route, Routes } from "react-router-dom";
 import { SessionList } from "./components/SessionList";
 import { SessionDetail } from "./components/SessionDetail";
+import { CommandPalette } from "./components/CommandPalette";
 import { ErrorBoundary } from "./components/ui/ErrorBoundary";
 import { ThemeToggle } from "./components/ui/ThemeToggle";
 
@@ -12,7 +13,13 @@ export default function App() {
           MissionDebug <span className="text-muted text-xs">v0</span>
         </Link>
         <span className="text-muted text-xs">localhost</span>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          <span
+            className="text-[10px] text-muted border border-border rounded px-1.5 py-0.5"
+            title="Press cmd+K (or ctrl+K) to jump"
+          >
+            ⌘K
+          </span>
           <ThemeToggle />
         </div>
       </header>
@@ -24,6 +31,7 @@ export default function App() {
           </Routes>
         </ErrorBoundary>
       </main>
+      <CommandPalette />
     </div>
   );
 }
