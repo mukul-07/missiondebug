@@ -26,6 +26,8 @@ const PADDING = 8;
 
 export function TrackScalar({ track }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const appRef = useRef<Application | null>(null);
+  const cursorRef = useRef<Graphics | null>(null);
 
   const startNs = usePlayback((s) => s.startNs);
   const currentTimeNs = usePlayback((s) => s.currentTimeNs);
@@ -61,13 +63,19 @@ export function TrackScalar({ track }: Props) {
         return;
       }
       app = a;
+      appRef.current = a;
       el.appendChild(a.canvas);
 
       drawChart(a, track);
+      const cursor = new Graphics();
+      a.stage.addChild(cursor);
+      cursorRef.current = cursor;
     })();
 
     return () => {
       cancelled = true;
+      cursorRef.current = null;
+      appRef.current = null;
       if (app) {
         try { app.destroy(true, { children: true }); } catch { /* ignore */ }
       }
@@ -75,6 +83,33 @@ export function TrackScalar({ track }: Props) {
     // track.samples is recreated as part of the loader's `done` event,
     // so this effect re-runs once when the session finishes loading.
   }, [track.samples, track.topic]);
+
+  // Playhead cursor: redraw only the cursor line (one Graphics clear +
+  // two moveTo/lineTo) on each tick. Chart line itself is never touched.
+  useEffect(() => {
+    const app = appRef.current;
+    const cursor = cursorRef.current;
+    if (!app || !cursor) return;
+    const samples = track.samples;
+    if (samples.length < 2) return;
+    const t0 = samples[0].timeNs;
+    const tEnd = samples[samples.length - 1].timeNs;
+    const span = tEnd - t0;
+    if (span <= 0n) return;
+    const w = app.renderer.width / app.renderer.resolution;
+    const usableW = Math.max(1, w - 2 * PADDING);
+    const playNs = currentTimeNs;
+    if (playNs < t0 || playNs > tEnd) {
+      cursor.clear();
+      return;
+    }
+    const frac = Number(playNs - t0) / Number(span);
+    const x = PADDING + frac * usableW;
+    cursor.clear();
+    cursor.moveTo(x, 4);
+    cursor.lineTo(x, HEIGHT - 4);
+    cursor.stroke({ color: 0xffffff, width: 1, alpha: 0.6 });
+  }, [currentTimeNs, track.samples]);
 
   if (track.samples.length === 0) return null;
 
@@ -109,9 +144,9 @@ export function TrackScalar({ track }: Props) {
   );
 }
 
-/** Draw the static line once after samples are known. No playhead animation
- *  here — the readout next to the chart shows the current value, which is
- *  cheaper than redrawing a moving cursor. */
+/** Draw the static line once after samples are known. The playhead cursor
+ *  is drawn into a separate Graphics object (see useEffect above) so the
+ *  expensive chart polyline is never rebuilt on every tick. */
 function drawChart(app: Application, track: ScalarTrack) {
   const { samples } = track;
   if (samples.length < 2) return;
