@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type {
   ChannelInfo,
+  DecodedOther,
   DecodedScalar,
   DecodedTf,
   DecodedTwist,
@@ -14,6 +15,18 @@ export interface ScalarTrack {
   samples: DecodedScalar[];
 }
 
+/**
+ * v2 P1.7.5 — windowed buffer of decoded messages for the JSON inspector.
+ * Caps at OTHER_MSGS_CAP_PER_TOPIC entries per topic. When the cap is
+ * reached, the oldest message drops (FIFO).
+ */
+export interface OtherTrack {
+  topic: string;
+  messages: DecodedOther[];
+}
+
+const OTHER_MSGS_CAP_PER_TOPIC = 2000;
+
 export interface LoadedSession {
   channels: ChannelInfo[];
   startNs: bigint;
@@ -22,6 +35,7 @@ export interface LoadedSession {
   twistByTopic: Map<string, DecodedTwist[]>;
   tfByTopic: Map<string, DecodedTf[]>;
   scalarByTopic: Map<string, ScalarTrack>;
+  otherByTopic: Map<string, OtherTrack>;
   done: boolean;
   error: string | null;
 }
@@ -34,6 +48,7 @@ const empty = (): LoadedSession => ({
   twistByTopic: new Map(),
   tfByTopic: new Map(),
   scalarByTopic: new Map(),
+  otherByTopic: new Map(),
   done: false,
   error: null,
 });
@@ -116,6 +131,19 @@ export function useMcapLoader(url: string | null): LoadedSession {
           track.samples.push(m.msg);
           break;
         }
+        case "other": {
+          let track = cur.otherByTopic.get(m.msg.topic);
+          if (track === undefined) {
+            track = { topic: m.msg.topic, messages: [] };
+            cur.otherByTopic.set(m.msg.topic, track);
+          }
+          track.messages.push(m.msg);
+          // FIFO cap — drop oldest when over.
+          if (track.messages.length > OTHER_MSGS_CAP_PER_TOPIC) {
+            track.messages.shift();
+          }
+          break;
+        }
         case "done": {
           for (const arr of cur.videoByTopic.values())
             arr.sort((a, b) => Number(a.timeNs - b.timeNs));
@@ -125,6 +153,8 @@ export function useMcapLoader(url: string | null): LoadedSession {
             arr.sort((a, b) => Number(a.timeNs - b.timeNs));
           for (const track of cur.scalarByTopic.values())
             track.samples.sort((a, b) => Number(a.timeNs - b.timeNs));
+          for (const track of cur.otherByTopic.values())
+            track.messages.sort((a, b) => Number(a.timeNs - b.timeNs));
           // Create new Map references so React's reference-equality picks
           // up the data accumulated via in-place mutation in the cases above.
           const updated = {
@@ -133,6 +163,7 @@ export function useMcapLoader(url: string | null): LoadedSession {
             twistByTopic: new Map(cur.twistByTopic),
             tfByTopic: new Map(cur.tfByTopic),
             scalarByTopic: new Map(cur.scalarByTopic),
+            otherByTopic: new Map(cur.otherByTopic),
             done: true,
           };
           stateRef.current = updated;

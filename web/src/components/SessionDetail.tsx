@@ -10,6 +10,7 @@ import { Timeline } from "./timeline/Timeline";
 import { TrackVideo } from "./timeline/TrackVideo";
 import { TrackPose } from "./timeline/TrackPose";
 import { TrackScalar } from "./timeline/TrackScalar";
+import { TrackJsonInspector } from "./timeline/TrackJsonInspector";
 import { Button } from "./ui/Button";
 
 export function SessionDetail() {
@@ -224,6 +225,17 @@ export function SessionDetail() {
               <TrackScalar key={track.topic} track={track} />
             ))}
         </div>
+      ) : null}
+
+      {/* P1.7.5 — JSON inspector for every "other" topic. One panel,
+          dropdown selector across topics, tree view synced to the
+          playhead. Useful for state machines, custom messages, and
+          structured topics where the scalar chart's first-leaf
+          heuristic isn't enough. */}
+      {loaded.otherByTopic.size > 0 ? (
+        <TrackJsonInspector
+          tracks={Array.from(loaded.otherByTopic.values())}
+        />
       ) : null}
 
       <div className="flex items-center gap-2">

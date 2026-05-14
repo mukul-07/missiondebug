@@ -62,6 +62,24 @@ export interface DecodedScalar {
   value: number;
 }
 
+/**
+ * v2 P1.7.5 — full decoded message for the JSON inspector.
+ *
+ * For "other" topics we also send the full decoded message so the
+ * SessionDetail can render a tree view synced to the playhead.
+ * Memory cost: bounded by the cap in mcap-decoder.ts (keeps at most
+ * N most recent messages per topic; older ones drop).
+ *
+ * `decoded` is whatever @foxglove/rosmsg2-serialization produced —
+ * a plain JS object with numbers, strings, bigints, and (rarely)
+ * typed arrays. structuredClone'd across the worker boundary.
+ */
+export interface DecodedOther {
+  topic: string;
+  timeNs: bigint;
+  decoded: unknown;
+}
+
 export type WorkerInbound = { type: "load"; url: string };
 
 export type WorkerOutbound =
@@ -70,5 +88,6 @@ export type WorkerOutbound =
   | { type: "twist"; msg: DecodedTwist }
   | { type: "tf"; msg: DecodedTf }
   | { type: "scalar"; msg: DecodedScalar }
+  | { type: "other"; msg: DecodedOther }
   | { type: "done"; counts: Record<string, number> }
   | { type: "error"; message: string };

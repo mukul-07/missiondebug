@@ -225,12 +225,25 @@ async function loadAndDecode(url: string): Promise<void> {
         } satisfies WorkerOutbound);
       }
     } else if (ch.info.kind === "other") {
+      const topic = ch.info.topic;
+
+      // P1.7.5 — forward the full decoded message for the JSON
+      // inspector. Cap per topic to bound memory: at most
+      // OTHER_MSGS_CAP_PER_TOPIC most-recent messages are kept on
+      // the main thread (older ones drop via a windowed buffer
+      // there). We don't drop here — we send and let the main
+      // thread enforce the window — because the inspector wants
+      // the message at the playhead, which might be anywhere.
+      ctx.postMessage({
+        type: "other",
+        msg: { topic, timeNs: t, decoded: cloneSafe(decoded) },
+      } satisfies WorkerOutbound);
+
       // P1.7.4 — generic scalar extraction. On the first message we
       // probe for a useful numeric leaf and remember the field path;
       // on subsequent messages we walk that same path. If the first
       // probe returns nothing, mark the topic "none" so we don't keep
       // re-probing every message.
-      const topic = ch.info.topic;
       let fp = scalarFieldByTopic.get(topic);
       if (fp === undefined) {
         const found = pickScalarField(decoded);
@@ -272,6 +285,48 @@ function walkPath(obj: unknown, path: string): unknown {
     cur = (cur as Record<string, unknown>)[segment];
   }
   return cur;
+}
+
+/**
+ * Recursively convert a decoded message into a structured-clone-safe
+ * tree before postMessage:
+ *   - BigInts → number when safely in JS-number range, otherwise string
+ *   - TypedArrays → Array<number>
+ *   - everything else passes through
+ *
+ * Without this, edge cases (very large BigInts, huge typed arrays) can
+ * cause clone failures or be unergonomic to render in the inspector.
+ */
+function cloneSafe(v: unknown): unknown {
+  if (v === null || v === undefined) return v;
+  const t = typeof v;
+  if (t === "bigint") {
+    const n = Number(v as bigint);
+    return Number.isSafeInteger(n) ? n : (v as bigint).toString();
+  }
+  if (t !== "object") return v;
+  if (ArrayBuffer.isView(v)) {
+    // TypedArray → number[] (capped to 64 entries; full data goes to
+    // MCAP, the inspector only needs to show structure).
+    const arr = Array.from(v as unknown as ArrayLike<number>);
+    return arr.length > 64
+      ? [...arr.slice(0, 64), `…${arr.length - 64} more`]
+      : arr;
+  }
+  if (Array.isArray(v)) {
+    if (v.length > 64) {
+      return [
+        ...v.slice(0, 64).map(cloneSafe),
+        `…${v.length - 64} more`,
+      ];
+    }
+    return v.map(cloneSafe);
+  }
+  const out: Record<string, unknown> = {};
+  for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+    out[k] = cloneSafe(val);
+  }
+  return out;
 }
 
 ctx.addEventListener("message", (ev: MessageEvent<WorkerInbound>) => {
