@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Application, Container, Graphics, Text } from "pixi.js";
 import { usePlayback } from "../../stores/playback";
 import { nearestByTime } from "../../hooks/useNearestByTime";
@@ -28,6 +28,7 @@ export function TrackScalar({ track }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const appRef = useRef<Application | null>(null);
   const cursorRef = useRef<Graphics | null>(null);
+  const [ready, setReady] = useState(0);
 
   const startNs = usePlayback((s) => s.startNs);
   const currentTimeNs = usePlayback((s) => s.currentTimeNs);
@@ -70,6 +71,7 @@ export function TrackScalar({ track }: Props) {
       const cursor = new Graphics();
       a.stage.addChild(cursor);
       cursorRef.current = cursor;
+      setReady((n) => n + 1);
     })();
 
     return () => {
@@ -110,7 +112,7 @@ export function TrackScalar({ track }: Props) {
     cursor.moveTo(x, 4);
     cursor.lineTo(x, HEIGHT - 4);
     cursor.stroke({ color: 0xffffff, width: 1, alpha: 0.6 });
-  }, [currentTimeNs, startNs, track.samples]);
+  }, [currentTimeNs, startNs, track.samples, ready]);
 
   if (track.samples.length === 0) return null;
 
