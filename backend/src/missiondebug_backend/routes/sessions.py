@@ -26,7 +26,7 @@ def get_router(get_db) -> APIRouter:
             "source": "agent" if row.mcap_url else "local",
         }
 
-    @router.get("", summary="List sessions, newest first")
+    @router.api_route("", methods=["GET", "HEAD"], summary="List sessions, newest first")
     def list_sessions(
         limit: int = Query(50, ge=1, le=200),
         offset: int = Query(0, ge=0),
@@ -51,7 +51,7 @@ def get_router(get_db) -> APIRouter:
             "robots": db.list_robot_ids(),
         }
 
-    @router.get("/{session_id}", summary="Get a single session by id")
+    @router.api_route("/{session_id}", methods=["GET", "HEAD"], summary="Get a single session by id")
     def get_session(session_id: str, db: Db = Depends(get_db)):
         """Returns the session row plus its annotation count. 404 if not found."""
         row = db.get_session(session_id)

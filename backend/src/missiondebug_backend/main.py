@@ -217,7 +217,12 @@ def build_app(
     app.include_router(ingest_router(get_db))
     app.include_router(agents_router(get_db))
 
-    @app.get("/healthz", tags=["system"], summary="Liveness probe")
+    @app.api_route(
+        "/healthz",
+        methods=["GET", "HEAD"],
+        tags=["system"],
+        summary="Liveness probe",
+    )
     def healthz():
         """Returns `{"ok": true}` when the backend is up. Use as your container/systemd healthcheck."""
         return {"ok": True}
@@ -228,7 +233,12 @@ def build_app(
         n = scan_directory(sessions_dir, db)
         return {"indexed": n}
 
-    @app.get("/api/admin/disk", tags=["admin"], summary="Disk usage + retention cap")
+    @app.api_route(
+        "/api/admin/disk",
+        methods=["GET", "HEAD"],
+        tags=["admin"],
+        summary="Disk usage + retention cap",
+    )
     def disk_usage():
         """Total MCAP bytes on disk, configured cap, and whether retention is enabled."""
         cap_bytes = max_disk_mb * 1024 * 1024

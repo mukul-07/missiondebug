@@ -106,16 +106,18 @@ def get_router(get_db) -> APIRouter:
         )
         return Response(status_code=204)
 
-    @router.get(
+    @router.api_route(
         "",
+        methods=["GET", "HEAD"],
         summary="List all known agents (raw roster, no health computation)",
     )
     def list_agents(db: Db = Depends(get_db)) -> dict:
         agents = db.list_agents()
         return {"agents": [AgentInfo.from_row(a).model_dump() for a in agents]}
 
-    @router.get(
+    @router.api_route(
         "/health",
+        methods=["GET", "HEAD"],
         summary="Fleet operational health — which agents are reporting",
     )
     def health(db: Db = Depends(get_db)) -> dict:

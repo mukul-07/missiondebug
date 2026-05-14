@@ -28,7 +28,11 @@ def _serialize(a: AnnotationRow) -> dict:
 def get_router(get_db) -> APIRouter:
     router = APIRouter(tags=["annotations"])
 
-    @router.get("/api/sessions/{session_id}/annotations", summary="List annotations for a session")
+    @router.api_route(
+        "/api/sessions/{session_id}/annotations",
+        methods=["GET", "HEAD"],
+        summary="List annotations for a session",
+    )
     def list_for_session(session_id: str, db: Db = Depends(get_db)):
         if db.get_session(session_id) is None:
             raise HTTPException(404, "session not found")
