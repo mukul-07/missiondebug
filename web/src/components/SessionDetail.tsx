@@ -11,6 +11,8 @@ import { TrackVideo } from "./timeline/TrackVideo";
 import { TrackPose } from "./timeline/TrackPose";
 import { TrackScalar } from "./timeline/TrackScalar";
 import { TrackJsonInspector } from "./timeline/TrackJsonInspector";
+import { TopicListExpander } from "./TopicListExpander";
+import { FoxgloveButton } from "./FoxgloveButton";
 import { Button } from "./ui/Button";
 
 export function SessionDetail() {
@@ -143,7 +145,21 @@ export function SessionDetail() {
     [loaded.twistByTopic],
   );
 
-  const primaryTwist = twistTopics[0] ? loaded.twistByTopic.get(twistTopics[0]) ?? [] : [];
+  // P1.7.6 — configurable velocity-chart source. Real fleets often
+  // have multiple Twist topics (nav/cmd_vel, dock/cmd_vel,
+  // <robot>/base_controller/cmd_vel). Pick from the URL param if set,
+  // else prefer "/cmd_vel" exactly, else fall back to the first
+  // available Twist topic. Lets engineers deep-link to a specific
+  // control-source view: /sessions/X?vel=/dock/cmd_vel.
+  const velParam = searchParams.get("vel");
+  const primaryTwistTopic = useMemo(() => {
+    if (velParam && twistTopics.includes(velParam)) return velParam;
+    if (twistTopics.includes("/cmd_vel")) return "/cmd_vel";
+    return twistTopics[0] ?? null;
+  }, [velParam, twistTopics]);
+  const primaryTwist = primaryTwistTopic
+    ? loaded.twistByTopic.get(primaryTwistTopic) ?? []
+    : [];
 
   const { data: annotations = [] } = useQuery({
     queryKey: ["annotations", id],
@@ -238,15 +254,47 @@ export function SessionDetail() {
         />
       ) : null}
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <Button onClick={toggle}>{isPlaying ? "Pause" : "Play"}</Button>
         <span className="text-xs text-muted font-mono">
           {(Number(currentTimeNs) / 1e9).toFixed(2)} / {(Number(durationNs) / 1e9).toFixed(2)} s
         </span>
+        {primaryTwistTopic && twistTopics.length > 1 ? (
+          <label className="text-xs text-muted flex items-center gap-1 ml-2">
+            velocity:
+            <select
+              value={primaryTwistTopic}
+              onChange={(e) => {
+                searchParams.set("vel", e.target.value);
+                window.history.replaceState(
+                  {},
+                  "",
+                  `${window.location.pathname}?${searchParams.toString()}`,
+                );
+                // Force re-render via state — searchParams alone via
+                // useSearchParams would also work but we don't have a
+                // setSearchParams here yet; reload-light approach.
+                window.dispatchEvent(new PopStateEvent("popstate"));
+              }}
+              className="bg-bg border border-border rounded px-1 py-0.5 text-xs font-mono outline-none focus:border-accent"
+            >
+              {twistTopics.map((t) => (
+                <option key={t} value={t} className="bg-panel">
+                  {t}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         <Button variant="ghost" onClick={onCopyLink} className="text-xs ml-auto">
           {copied ? "✓ Link copied" : "Copy link"}
         </Button>
+        <FoxgloveButton sessionId={id ?? ""} />
       </div>
+
+      {meta?.topics && meta.topics.length > 0 ? (
+        <TopicListExpander topics={meta.topics} />
+      ) : null}
 
       {id ? <AnnotationsPanel sessionId={id} /> : null}
     </div>

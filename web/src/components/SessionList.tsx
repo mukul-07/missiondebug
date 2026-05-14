@@ -6,6 +6,7 @@ import { Card } from "./ui/Card";
 import { EmptyState } from "./ui/EmptyState";
 import { SkeletonSessionList } from "./ui/Skeleton";
 import { FilterRail, useRailGroups } from "./FilterRail";
+import { TopicListExpander } from "./TopicListExpander";
 
 function relativeTime(ms: number): string {
   const d = Date.now() - ms;
@@ -141,7 +142,7 @@ export function SessionList() {
                       📝 {s.annotation_count}
                     </span>
                   ) : null}
-                  {s.topics.length} topics
+                  <TopicListExpander topics={s.topics} compact />
                 </div>
               </div>
             </Card>
