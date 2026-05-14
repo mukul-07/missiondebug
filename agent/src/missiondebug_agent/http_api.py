@@ -20,6 +20,7 @@ from .ring_buffer import RingBuffer
 
 if TYPE_CHECKING:
     from .hub_client import HubClient
+    from .s3_uploader import S3Uploader
 
 log = logging.getLogger(__name__)
 
@@ -49,12 +50,16 @@ def save_now(
     label: str | None = None,
     schema_loader: Callable[[str], str] | None = None,
     hub_client: "HubClient | None" = None,
+    s3_uploader: "S3Uploader | None" = None,
 ) -> SaveResponse:
     """Flush the ring buffer to a new MCAP file. Returns SaveResponse.
 
     Used both by the HTTP endpoint and by the anomaly callback (no HTTP roundtrip).
     When `hub_client` is provided, also forwards the session metadata to the
     configured hub (v2 fleet). Hub failures are non-fatal — Hard Rule 18.
+    When `s3_uploader` is provided, also uploads the MCAP to S3 (v2 P5a)
+    and posts the public S3 URL to the hub instead of the agent's local
+    URL. Upload failure is non-fatal — falls back to agent-served URL.
     """
     snap = ring.snapshot()
     if not snap:
@@ -80,9 +85,21 @@ def save_now(
         meta.session_id, len(snap), meta.duration_ns / 1e9, meta.label,
     )
 
+    # v2 P5a — optional S3 upload. Run before reporting to the hub so
+    # the hub gets the S3 URL if upload succeeds. On failure, mcap_url
+    # in the hub payload stays None, hub_client falls back to the
+    # agent-served URL it builds from agent_url + session_id.
+    s3_url: str | None = None
+    if s3_uploader is not None:
+        s3_url = s3_uploader.upload(
+            local_path=Path(meta.path),
+            robot_id=config.robot_id,
+            session_id=meta.session_id,
+        )
+
     # v2 (fleet): forward to hub if configured. Non-fatal on failure.
     if hub_client is not None:
-        hub_client.report_session({
+        payload: dict = {
             "session_id": meta.session_id,
             "started_at": meta.started_wall_ns // 1_000_000,
             "ended_at": meta.ended_wall_ns // 1_000_000,
@@ -90,7 +107,10 @@ def save_now(
             "label": meta.label,
             "topics": meta.topics,
             "mcap_size_bytes": meta.size_bytes,
-        })
+        }
+        if s3_url is not None:
+            payload["mcap_url"] = s3_url
+        hub_client.report_session(payload)
 
     return SaveResponse(
         session_id=meta.session_id,
@@ -108,6 +128,7 @@ def build_app(
     *,
     schema_loader: Callable[[str], str] | None = None,
     hub_client: "HubClient | None" = None,
+    s3_uploader: "S3Uploader | None" = None,
 ) -> FastAPI:
     app = FastAPI(
         title="MissionDebug Agent",
@@ -143,13 +164,15 @@ def build_app(
 
         When the agent is configured with a hub URL, the session metadata is
         also forwarded to the hub (best effort; failures don't affect the
-        local save).
+        local save). When s3.bucket is configured, the MCAP is also uploaded
+        to S3 and the public URL is reported to the hub.
         """
         return save_now(
             config, ring,
             label=(req.label if req else None),
             schema_loader=schema_loader,
             hub_client=hub_client,
+            s3_uploader=s3_uploader,
         )
 
     return app

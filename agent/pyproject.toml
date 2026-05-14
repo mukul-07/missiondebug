@@ -18,6 +18,14 @@ dev = [
   "pytest-asyncio>=0.24",
   "ruff>=0.6",
 ]
+# v2 P5a — optional S3 upload of MCAP files. boto3 works against AWS S3,
+# MinIO, Cloudflare R2, and any S3-compatible store. Heavy (~30MB) but
+# well-tested. Customers who want durability install:
+#   pip install missiondebug-agent[s3]
+# v1.5 single-robot deployments keep working without it.
+s3 = [
+  "boto3>=1.34",
+]
 
 [project.scripts]
 missiondebug-agent = "missiondebug_agent.main:main"

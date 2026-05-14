@@ -110,3 +110,115 @@ def test_save_now_hub_failure_does_not_break_local_save(tmp_path):
     assert Path(resp.path).exists()
     assert client.sessions_failed == 1
     assert client.sessions_sent == 0
+
+
+# ---- v2 P5a: S3 upload integration -----------------------------------
+
+
+def test_save_now_with_s3_uploader_posts_s3_url_to_hub(tmp_path):
+    """When an S3Uploader is provided, the upload runs after the local
+    write, and the hub payload carries the S3 URL as mcap_url instead
+    of the agent-derived URL."""
+    from missiondebug_agent.config import S3Config
+    from missiondebug_agent.s3_uploader import S3Uploader
+
+    class FakeS3Client:
+        def __init__(self):
+            self.calls = []
+        def upload_file(self, Filename, Bucket, Key, ExtraArgs=None):
+            self.calls.append({"filename": Filename, "bucket": Bucket, "key": Key})
+
+    fake_s3 = FakeS3Client()
+    uploader = S3Uploader(
+        S3Config(
+            bucket="my-bucket",
+            region="us-east-1",
+            public_base_url="https://my-bucket.s3.us-east-1.amazonaws.com",
+            key_prefix="missiondebug/sessions",
+        ),
+        client=fake_s3,
+    )
+
+    recorder, post_fn = fake_post_factory()
+    hub = HubClient(
+        HubClientConfig(
+            hub_url="http://hub:8000",
+            robot_id="robot-001",
+            agent_url="http://robot-001.local:7000",
+        ),
+        post_fn=post_fn,
+    )
+
+    resp = save_now(
+        _config(tmp_path), _ring(),
+        label="x",
+        schema_loader=_loader,
+        hub_client=hub,
+        s3_uploader=uploader,
+    )
+
+    # Local MCAP still exists (Hard Rule 18 + 19 spirit — local first).
+    assert Path(resp.path).exists()
+
+    # S3 upload was attempted with the expected bucket/key.
+    assert len(fake_s3.calls) == 1
+    call = fake_s3.calls[0]
+    assert call["bucket"] == "my-bucket"
+    assert call["key"].startswith("missiondebug/sessions/robot-001/")
+    assert call["key"].endswith(".mcap")
+
+    # The hub got the S3 URL as mcap_url.
+    ingests = [r for r in recorder if r[0].endswith("/api/v1/sessions/ingest")]
+    assert len(ingests) == 1
+    _url, body, _auth = ingests[0]
+    assert body["mcap_url"].startswith("https://my-bucket.s3.us-east-1.amazonaws.com/")
+    assert body["mcap_url"].endswith(".mcap")
+
+
+def test_save_now_with_failed_s3_falls_back_to_agent_url(tmp_path):
+    """S3 outage = non-fatal. The hub payload falls back to the
+    agent-derived URL so the session is still reachable (just from the
+    robot's local HTTP endpoint, which is the v2 Phase 1 behaviour)."""
+    from missiondebug_agent.config import S3Config
+    from missiondebug_agent.s3_uploader import S3Uploader
+
+    class BrokenS3Client:
+        def upload_file(self, **kwargs):
+            raise RuntimeError("S3 unreachable")
+
+    uploader = S3Uploader(
+        S3Config(
+            bucket="my-bucket",
+            public_base_url="https://my-bucket.example.com",
+        ),
+        client=BrokenS3Client(),
+    )
+
+    recorder, post_fn = fake_post_factory()
+    hub = HubClient(
+        HubClientConfig(
+            hub_url="http://hub:8000",
+            robot_id="robot-001",
+            agent_url="http://robot-001.local:7000",
+        ),
+        post_fn=post_fn,
+    )
+
+    resp = save_now(
+        _config(tmp_path), _ring(),
+        label="x",
+        schema_loader=_loader,
+        hub_client=hub,
+        s3_uploader=uploader,
+    )
+
+    assert Path(resp.path).exists()
+    # The hub still got an ingest — mcap_url falls through to the agent's
+    # own /api/sessions/<id>/mcap (built by HubClient's _enrich_session_payload).
+    ingests = [r for r in recorder if r[0].endswith("/api/v1/sessions/ingest")]
+    assert len(ingests) == 1
+    _url, body, _auth = ingests[0]
+    # Not the S3 URL — fallback to agent-derived URL.
+    assert "my-bucket.example.com" not in body["mcap_url"]
+    assert "/api/sessions/" in body["mcap_url"]
+    assert uploader.uploads_failed == 1

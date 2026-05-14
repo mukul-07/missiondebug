@@ -135,6 +135,42 @@ class HubConfig(BaseModel):
     subsystem: str | None = None
 
 
+class S3Config(BaseModel):
+    """v2 P5a — optional MCAP upload to an S3-compatible object store.
+
+    When set, the agent uploads each MCAP file to the bucket after the
+    local write succeeds, then reports the public HTTPS URL as the
+    session's mcap_url. This decouples MCAP durability from robot disk
+    health — if the robot dies, sessions still scrub from the hub.
+
+    Hard Rule 19 (MCAPs do not auto-upload by default) holds: this is
+    opt-in. v1.5 single-robot deployments don't set s3.bucket and never
+    touch S3.
+
+    Compatible with AWS S3, MinIO, Cloudflare R2, GCS via S3-interop,
+    and any other S3-compatible service. `endpoint_url` is unset for
+    AWS, set to the MinIO/R2 endpoint otherwise.
+
+    public_base_url: the prefix the hub uses to fetch objects. For AWS
+    this is typically https://<bucket>.s3.<region>.amazonaws.com.
+    Customers fronting S3 with CloudFront or a CDN set this to the CDN
+    domain. v2.1+ work moves to hub-side presigned URLs for proper auth;
+    v2 P5a expects a publicly-readable bucket or a CDN with edge auth.
+    """
+
+    bucket: str | None = None
+    region: str = "us-east-1"
+    endpoint_url: str | None = None
+    public_base_url: str | None = None
+    # Credentials. Boto3 also reads from env / ~/.aws/credentials when
+    # these are unset, which is the recommended production path.
+    access_key_id: str | None = None
+    secret_access_key: str | None = None
+    # Key prefix inside the bucket. Resolves to:
+    #   <prefix>/<robot_id>/<session_id>.mcap
+    key_prefix: str = "missiondebug/sessions"
+
+
 class AgentConfig(BaseModel):
     robot_id: str = "robot-001"
     buffer_seconds: float = Field(default=60.0, gt=0)
@@ -149,6 +185,10 @@ class AgentConfig(BaseModel):
     anomaly: AnomalyConfig = AnomalyConfig()
     # v2 (fleet): optional hub registration. Empty = standalone v1.5 mode.
     hub: HubConfig = HubConfig()
+    # v2 P5a: optional MCAP upload to S3-compatible storage. Empty =
+    # no upload (Hard Rule 19). When bucket is set, every saved session
+    # also gets uploaded.
+    s3: S3Config = S3Config()
 
     @classmethod
     def load(cls, path: str | Path) -> AgentConfig:

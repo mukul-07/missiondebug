@@ -19,6 +19,9 @@ from .detectors.topic_dropout import DropoutAnomaly, TopicDropoutDetector
 from .http_api import build_app, save_now
 from .hub_client import HubClient, HubClientConfig
 from .ring_buffer import RingBuffer
+# S3Uploader imported lazily inside main() so the boto3 dependency only
+# gets pulled in when config.s3.bucket is actually set. v1.5 standalone
+# deployments without the [s3] extra still load cleanly.
 
 # Bumped per release; reported to the hub in every heartbeat so fleet
 # operators can spot agents lagging behind on rollouts.
@@ -86,7 +89,24 @@ def main() -> None:
         hub_client.start()
         log.info("Hub sync enabled (url=%s, robot=%s)", config.hub.url, config.robot_id)
 
-    app = build_app(config, ring, hub_client=hub_client)
+    # v2 P5a: optional S3 upload after each save. Lazy import so boto3
+    # is only required when the customer actually opts in.
+    s3_uploader = None
+    if config.s3.bucket:
+        try:
+            from .s3_uploader import S3Uploader
+            s3_uploader = S3Uploader(config.s3)
+            log.info(
+                "S3 upload enabled (bucket=%s, prefix=%s)",
+                config.s3.bucket, config.s3.key_prefix,
+            )
+        except Exception:
+            log.exception(
+                "Failed to initialise S3 uploader — continuing without it. "
+                "Sessions will only live on local disk."
+            )
+
+    app = build_app(config, ring, hub_client=hub_client, s3_uploader=s3_uploader)
 
     # Multiple detectors may want callbacks on the same topic (e.g. /tf used
     # by path-deviation AND a config rule). Stack them per topic and present
@@ -102,7 +122,7 @@ def main() -> None:
     def on_stall(_a: StallAnomaly) -> None:
         log.info("Auto-saving session due to stall anomaly")
         try:
-            r = save_now(config, ring, label="anomaly:stall", hub_client=hub_client)
+            r = save_now(config, ring, label="anomaly:stall", hub_client=hub_client, s3_uploader=s3_uploader)
             log.info("Auto-saved %s (%.2fs)", r.session_id, r.duration_s)
         except Exception:
             log.exception("Auto-save failed (stall)")
@@ -131,7 +151,7 @@ def main() -> None:
         def on_path_deviation(a: PathDeviationAnomaly) -> None:
             log.info("Auto-saving session due to path-deviation anomaly")
             try:
-                r = save_now(config, ring, label="anomaly:path-deviation", hub_client=hub_client)
+                r = save_now(config, ring, label="anomaly:path-deviation", hub_client=hub_client, s3_uploader=s3_uploader)
                 log.info("Auto-saved %s (%.2fs, drift %.2fm)",
                          r.session_id, r.duration_s, a.distance_m)
             except Exception:
@@ -172,7 +192,7 @@ def main() -> None:
             label = f"anomaly:{a.name}"
             log.info("Auto-saving session: rule %s", a.name)
             try:
-                r = save_now(config, ring, label=label, hub_client=hub_client)
+                r = save_now(config, ring, label=label, hub_client=hub_client, s3_uploader=s3_uploader)
                 log.info("Auto-saved %s (%.2fs, matched=%r)",
                          r.session_id, r.duration_s, a.matched_value)
             except Exception:
@@ -197,7 +217,7 @@ def main() -> None:
         def on_dropout(a: DropoutAnomaly) -> None:
             log.info("Auto-saving session: dropout on %s", a.topic)
             try:
-                r = save_now(config, ring, label=f"anomaly:{a.name}", hub_client=hub_client)
+                r = save_now(config, ring, label=f"anomaly:{a.name}", hub_client=hub_client, s3_uploader=s3_uploader)
                 log.info("Auto-saved %s (%.2fs, silence %.2fs)",
                          r.session_id, r.duration_s, a.silence_ns / 1e9)
             except Exception:
