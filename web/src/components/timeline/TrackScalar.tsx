@@ -98,7 +98,8 @@ export function TrackScalar({ track }: Props) {
     if (span <= 0n) return;
     const w = app.renderer.width / app.renderer.resolution;
     const usableW = Math.max(1, w - 2 * PADDING);
-    const playNs = currentTimeNs;
+    // currentTimeNs is an offset from startNs; sample timeNs is absolute.
+    const playNs = startNs + currentTimeNs;
     if (playNs < t0 || playNs > tEnd) {
       cursor.clear();
       return;
@@ -109,7 +110,7 @@ export function TrackScalar({ track }: Props) {
     cursor.moveTo(x, 4);
     cursor.lineTo(x, HEIGHT - 4);
     cursor.stroke({ color: 0xffffff, width: 1, alpha: 0.6 });
-  }, [currentTimeNs, track.samples]);
+  }, [currentTimeNs, startNs, track.samples]);
 
   if (track.samples.length === 0) return null;
 
