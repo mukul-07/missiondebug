@@ -8,12 +8,15 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import FileResponse
 from starlette.types import Scope
+
+from .auth import AuthConfig, _check_basic, _check_bearer
 
 
 class SpaStaticFiles(StaticFiles):
@@ -77,8 +80,13 @@ def build_app(
     fixtures_dir: Path | None = None,
     max_disk_mb: int = 0,
     web_dir: Path | None = None,
+    auth_config: AuthConfig | None = None,
 ) -> FastAPI:
     db = Db(db_path)
+    # Auth config — caller is expected to have already validated startup
+    # invariants in main(). Defaulting here keeps existing test callers
+    # (which pass no auth_config) seeing v1.5 open-routes behaviour.
+    auth_cfg = auth_config or AuthConfig()
 
     scan_dirs: list[Path] = [sessions_dir]
     if fixtures_dir is not None and fixtures_dir.exists():
@@ -173,6 +181,32 @@ def build_app(
         expose_headers=["Content-Range", "Content-Length", "Accept-Ranges"],
     )
 
+    @app.middleware("http")
+    async def auth_middleware(request: Request, call_next):
+        """v2 P4 — gate every /api/* request on the configured credentials.
+
+        Static SPA assets and /healthz stay open. /docs and /openapi.json
+        stay open too — discoverable API spec is standard, the auth gate
+        only matters for the endpoints themselves.
+        """
+        if not auth_cfg.required:
+            return await call_next(request)
+        path = request.url.path
+        if not path.startswith("/api/"):
+            return await call_next(request)
+
+        authorization = request.headers.get("authorization")
+        if auth_cfg.password and _check_basic(authorization, auth_cfg.password):
+            return await call_next(request)
+        if auth_cfg.token and _check_bearer(authorization, auth_cfg.token):
+            return await call_next(request)
+
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Authentication required"},
+            headers={"WWW-Authenticate": 'Basic realm="MissionDebug"'},
+        )
+
     def get_db() -> Db:
         return db
 
@@ -263,12 +297,19 @@ def main() -> None:
     fixtures = (
         Path(args.fixtures_dir) if os.environ.get("MD_FIXTURES") == "1" else None
     )
+    # v2 P4 — read auth env once and enforce Hard Rule 21 at startup.
+    # Fleet mode without a password raises SystemExit so docker/systemd
+    # surfaces a clear startup failure instead of running insecure.
+    auth_cfg = AuthConfig()
+    auth_cfg.enforce_startup_invariants()
+
     app = build_app(
         Path(args.sessions_dir),
         Path(args.db),
         fixtures_dir=fixtures,
         max_disk_mb=args.max_disk_mb,
         web_dir=Path(args.web_dir) if args.web_dir else None,
+        auth_config=auth_cfg,
     )
     uvicorn.run(app, host=args.host, port=args.port)
 

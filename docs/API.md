@@ -17,7 +17,30 @@ open http://<robot>:8000/docs        # backend
 
 ## Authentication
 
-**None.** Both services trust the network. v1.5 is designed for single-robot, local-network use. If you expose either port to the public internet, put it behind a reverse proxy with auth.
+Auth model depends on which mode the backend runs in:
+
+| Mode | When auth applies | What's required |
+|---|---|---|
+| **`single`** (v1.5 default) | Only if `MD_HUB_AUTH_PASSWORD` is set | Opt-in. Network trust assumed otherwise. |
+| **`fleet`** (v2 hub) | Always | `MD_HUB_AUTH_PASSWORD` is required at startup — hub refuses to start without it (Hard Rule 21). |
+
+When auth is enabled, the hub gates every `/api/*` route via two paths:
+
+- **Browser users**: HTTP Basic Auth. The browser prompts on first visit. Username is ignored; password must equal `MD_HUB_AUTH_PASSWORD`.
+- **Agents** (robot → hub): `Authorization: Bearer <token>` header. Token equals `MD_HUB_AUTH_TOKEN`, which defaults to the password when unset — set both for independent rotation.
+
+Always public regardless of mode: `/healthz`, `/openapi.json`, `/docs`, SPA static files.
+
+```bash
+# Agent posts a heartbeat with a Bearer token:
+curl -X POST http://hub:8000/api/v1/agents/heartbeat \
+  -H 'Authorization: Bearer <token>' \
+  -H 'Content-Type: application/json' \
+  -d '{"robot_id":"robot-001"}'
+
+# Or use HTTP Basic in a script:
+curl -u :hunter2 http://hub:8000/api/sessions
+```
 
 See [`SECURITY.md`](../SECURITY.md) for the threat model.
 
