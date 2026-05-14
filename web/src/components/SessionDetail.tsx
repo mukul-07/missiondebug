@@ -42,7 +42,7 @@ export function SessionDetail() {
   }, [loaded.startNs, loaded.endNs, setDuration]);
 
   // ---------- shareable ?t= deep link ----------
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const initialTimeApplied = useRef(false);
   // Apply ?t=<seconds> ONCE, after duration is known.
   useEffect(() => {
@@ -270,17 +270,22 @@ export function SessionDetail() {
 
       {/* P1.7.4 — auto-rendered scalar charts for every "other" topic
           that yielded a numeric leaf. Sorted by sample count desc so
-          the most-active topics show first. Capped at 12 panels to
-          keep the page navigable; the rest are still in the MCAP. */}
+          the most-active topics show first. Filterable via ?q= so the
+          engineer can narrow the grid to the topics relevant to the
+          incident they're investigating. */}
       {loaded.scalarByTopic.size > 0 ? (
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-          {Array.from(loaded.scalarByTopic.values())
-            .sort((a, b) => b.samples.length - a.samples.length)
-            .slice(0, 12)
-            .map((track) => (
-              <TrackScalar key={track.topic} track={track} />
-            ))}
-        </div>
+        <ScalarGrid
+          tracks={Array.from(loaded.scalarByTopic.values()).sort(
+            (a, b) => b.samples.length - a.samples.length,
+          )}
+          query={searchParams.get("q") ?? ""}
+          onQueryChange={(q) => {
+            const next = new URLSearchParams(searchParams);
+            if (q) next.set("q", q);
+            else next.delete("q");
+            setSearchParams(next, { replace: true });
+          }}
+        />
       ) : null}
 
       {/* P1.7.5 — JSON inspector for every "other" topic. One panel,
@@ -337,6 +342,45 @@ export function SessionDetail() {
       ) : null}
 
       {id ? <AnnotationsPanel sessionId={id} /> : null}
+    </div>
+  );
+}
+
+type ScalarGridProps = {
+  tracks: import("../hooks/useMcapLoader").ScalarTrack[];
+  query: string;
+  onQueryChange: (q: string) => void;
+};
+
+function ScalarGrid({ tracks, query, onQueryChange }: ScalarGridProps) {
+  const q = query.trim().toLowerCase();
+  const filtered = q
+    ? tracks.filter((t) => t.topic.toLowerCase().includes(q))
+    : tracks;
+  return (
+    <div className="grid gap-2">
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          placeholder="Filter topics…"
+          value={query}
+          onChange={(e) => onQueryChange(e.target.value)}
+          className="bg-bg border border-border rounded px-2 py-1 text-xs font-mono outline-none focus:border-accent w-64"
+        />
+        <span className="text-xs text-muted">
+          {filtered.length} of {tracks.length} scalar topic
+          {tracks.length === 1 ? "" : "s"}
+        </span>
+      </div>
+      {filtered.length > 0 ? (
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          {filtered.map((track) => (
+            <TrackScalar key={track.topic} track={track} />
+          ))}
+        </div>
+      ) : (
+        <div className="text-muted text-xs">No topics match “{query}”.</div>
+      )}
     </div>
   );
 }
