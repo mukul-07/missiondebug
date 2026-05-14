@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState } from "react";
-import { Application, Container, Graphics, Text } from "pixi.js";
+import { useEffect, useRef } from "react";
 import { usePlayback } from "../../stores/playback";
 import { nearestByTime } from "../../hooks/useNearestByTime";
 import type { ScalarTrack } from "../../hooks/useMcapLoader";
@@ -8,13 +7,10 @@ import type { ScalarTrack } from "../../hooks/useMcapLoader";
  * v2 P1.7.4 — Auto-rendered scalar chart for any "other" topic the
  * MCAP worker successfully extracted a numeric field from.
  *
- * One TrackScalar = one topic. Renders the picked numeric field as a
- * line over time, plus the current value at the playhead. Min/max
- * labels on the right edge.
- *
- * Picked-field discovery happens in the worker (pickScalarField in
- * mcap-decoder.ts). Customers can later override the picked field per
- * topic via agent config — for now, first numeric leaf wins.
+ * Uses a plain 2D canvas (not WebGL/PixiJS) because a fleet robot has
+ * 30+ topics and browsers cap WebGL contexts at ~16 per page. 2D
+ * canvases have effectively no limit, and these polylines don't need
+ * GPU acceleration.
  */
 
 type Props = {
@@ -23,96 +19,47 @@ type Props = {
 
 const HEIGHT = 80;
 const PADDING = 8;
+const COLOR_LINE = "#ff5a5f";
+const COLOR_LABEL = "#7d8590";
+const COLOR_CURSOR = "rgba(255, 255, 255, 0.6)";
+const COLOR_BG = "#13161b";
 
 export function TrackScalar({ track }: Props) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const appRef = useRef<Application | null>(null);
-  const cursorRef = useRef<Graphics | null>(null);
-  const [ready, setReady] = useState(0);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const startNs = usePlayback((s) => s.startNs);
   const currentTimeNs = usePlayback((s) => s.currentTimeNs);
   const durationNs = usePlayback((s) => s.durationNs);
 
-  // For the "current value at playhead" readout.
   const current = nearestByTime(track.samples, startNs, currentTimeNs);
 
-  // INIT: pixi app + chart graphics. Re-runs only when the topic/
-  // samples set changes — typical case is once per session load.
   useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    let cancelled = false;
-    let app: Application | null = null;
-
-    (async () => {
-      const a = new Application();
-      try {
-        await a.init({
-          background: "#13161b",
-          antialias: true,
-          resizeTo: el,
-          autoDensity: true,
-          resolution: window.devicePixelRatio || 1,
-        });
-      } catch (e) {
-        console.error("Pixi init failed (TrackScalar)", e);
-        return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const draw = () => {
+      const parent = canvas.parentElement;
+      if (!parent) return;
+      const cssW = parent.clientWidth;
+      const cssH = HEIGHT;
+      const dpr = window.devicePixelRatio || 1;
+      // Match canvas internal resolution to CSS size × DPR.
+      if (canvas.width !== Math.round(cssW * dpr) || canvas.height !== Math.round(cssH * dpr)) {
+        canvas.width = Math.round(cssW * dpr);
+        canvas.height = Math.round(cssH * dpr);
+        canvas.style.width = `${cssW}px`;
+        canvas.style.height = `${cssH}px`;
       }
-      if (cancelled) {
-        try { a.destroy(true); } catch { /* ignore */ }
-        return;
-      }
-      app = a;
-      appRef.current = a;
-      el.appendChild(a.canvas);
-
-      drawChart(a, track);
-      const cursor = new Graphics();
-      a.stage.addChild(cursor);
-      cursorRef.current = cursor;
-      setReady((n) => n + 1);
-    })();
-
-    return () => {
-      cancelled = true;
-      cursorRef.current = null;
-      appRef.current = null;
-      if (app) {
-        try { app.destroy(true, { children: true }); } catch { /* ignore */ }
-      }
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      drawChart(ctx, track, cssW, cssH, startNs, currentTimeNs);
     };
-    // track.samples is recreated as part of the loader's `done` event,
-    // so this effect re-runs once when the session finishes loading.
-  }, [track.samples, track.topic]);
-
-  // Playhead cursor: redraw only the cursor line (one Graphics clear +
-  // two moveTo/lineTo) on each tick. Chart line itself is never touched.
-  useEffect(() => {
-    const app = appRef.current;
-    const cursor = cursorRef.current;
-    if (!app || !cursor) return;
-    const samples = track.samples;
-    if (samples.length < 2) return;
-    const t0 = samples[0].timeNs;
-    const tEnd = samples[samples.length - 1].timeNs;
-    const span = tEnd - t0;
-    if (span <= 0n) return;
-    const w = app.renderer.width / app.renderer.resolution;
-    const usableW = Math.max(1, w - 2 * PADDING);
-    // currentTimeNs is an offset from startNs; sample timeNs is absolute.
-    const playNs = startNs + currentTimeNs;
-    if (playNs < t0 || playNs > tEnd) {
-      cursor.clear();
-      return;
-    }
-    const frac = Number(playNs - t0) / Number(span);
-    const x = PADDING + frac * usableW;
-    cursor.clear();
-    cursor.moveTo(x, 4);
-    cursor.lineTo(x, HEIGHT - 4);
-    cursor.stroke({ color: 0xffffff, width: 1, alpha: 0.6 });
-  }, [currentTimeNs, startNs, track.samples, ready]);
+    draw();
+    // Redraw on container resize (e.g. theme/layout change).
+    const ro = new ResizeObserver(draw);
+    if (canvas.parentElement) ro.observe(canvas.parentElement);
+    return () => ro.disconnect();
+  }, [track.samples, track.topic, currentTimeNs, startNs]);
 
   if (track.samples.length === 0) return null;
 
@@ -130,10 +77,11 @@ export function TrackScalar({ track }: Props) {
         </span>
       </div>
       <div
-        ref={containerRef}
         style={{ width: "100%", height: HEIGHT }}
-        className="border border-border rounded"
-      />
+        className="border border-border rounded overflow-hidden"
+      >
+        <canvas ref={canvasRef} style={{ display: "block" }} />
+      </div>
       <div className="flex items-baseline justify-between text-xs">
         <span className="text-muted">
           n={track.samples.length}{" "}
@@ -147,14 +95,19 @@ export function TrackScalar({ track }: Props) {
   );
 }
 
-/** Draw the static line once after samples are known. The playhead cursor
- *  is drawn into a separate Graphics object (see useEffect above) so the
- *  expensive chart polyline is never rebuilt on every tick. */
-function drawChart(app: Application, track: ScalarTrack) {
+function drawChart(
+  ctx: CanvasRenderingContext2D,
+  track: ScalarTrack,
+  w: number,
+  h: number,
+  startNs: bigint,
+  currentTimeNs: bigint,
+) {
+  ctx.fillStyle = COLOR_BG;
+  ctx.fillRect(0, 0, w, h);
+
   const { samples } = track;
   if (samples.length < 2) return;
-  const w = app.renderer.width / app.renderer.resolution;
-  const h = HEIGHT;
   const usableW = Math.max(1, w - 2 * PADDING);
   const yTop = 8;
   const yBot = h - 8;
@@ -169,45 +122,42 @@ function drawChart(app: Application, track: ScalarTrack) {
     minV -= 1;
     maxV += 1;
   }
-
   const t0 = samples[0].timeNs;
   const tEnd = samples[samples.length - 1].timeNs;
   const span = tEnd - t0;
   if (span <= 0n) return;
 
-  const stage = app.stage;
-  const chart = new Container();
-  stage.addChild(chart);
-
-  const line = new Graphics();
-  let started = false;
-  for (const s of samples) {
+  // Polyline.
+  ctx.strokeStyle = COLOR_LINE;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let i = 0; i < samples.length; i++) {
+    const s = samples[i];
     const frac = Number(s.timeNs - t0) / Number(span);
     const x = PADDING + frac * usableW;
     const y = yBot - ((s.value - minV) / (maxV - minV)) * (yBot - yTop);
-    if (!started) {
-      line.moveTo(x, y);
-      started = true;
-    } else {
-      line.lineTo(x, y);
-    }
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
   }
-  line.stroke({ color: 0xff5a5f, width: 1 });
-  chart.addChild(line);
+  ctx.stroke();
 
-  const labelMax = new Text({
-    text: maxV.toFixed(2),
-    style: { fill: 0x7d8590, fontSize: 9 },
-  });
-  labelMax.x = PADDING + 2;
-  labelMax.y = yTop - 2;
-  chart.addChild(labelMax);
+  // Min/max labels (top-left of plot area).
+  ctx.fillStyle = COLOR_LABEL;
+  ctx.font = "9px ui-monospace, SFMono-Regular, Menlo, monospace";
+  ctx.textBaseline = "top";
+  ctx.fillText(maxV.toFixed(2), PADDING + 2, yTop - 2);
+  ctx.fillText(minV.toFixed(2), PADDING + 2, yBot - 10);
 
-  const labelMin = new Text({
-    text: minV.toFixed(2),
-    style: { fill: 0x7d8590, fontSize: 9 },
-  });
-  labelMin.x = PADDING + 2;
-  labelMin.y = yBot - 10;
-  chart.addChild(labelMin);
+  // Playhead cursor.
+  const playNs = startNs + currentTimeNs;
+  if (playNs >= t0 && playNs <= tEnd) {
+    const frac = Number(playNs - t0) / Number(span);
+    const x = PADDING + frac * usableW;
+    ctx.strokeStyle = COLOR_CURSOR;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x, 4);
+    ctx.lineTo(x, h - 4);
+    ctx.stroke();
+  }
 }
