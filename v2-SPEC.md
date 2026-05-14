@@ -284,7 +284,7 @@ durability if a robot dies.
 | Order | Phase | Effort | Why pre-pilot |
 |---|---|---|---|
 | 1 | **Phase 1** | done (2026-05-12) | Architectural keystone — agents + hub + ingest + proxy. |
-| 2 | **Phase 1.7** | ~3 days | Generic scalar chart + JSON message inspector + configurable cmd_vel topic + topic-list expander. Without this, replay is broken for 50+ topic fleets. |
+| 2 | **Phase 1.7** | ~5-6 days | Topic rendering breadth (scalar chart, JSON inspector, configurable cmd_vel, topic-list expander, Foxglove deep-link) + fleet-ready UI patterns adapted from ros2_medkit's left-rail UX (hierarchical filter, command palette, polish primitives). Without this, replay is broken for 50+ topic fleets and the SessionList filter breaks at >20 robots. |
 | 3 | **Phase 4** (basic auth) | ~1 day | Single shared password. Unblocks CISO review at the pilot customer. |
 | 4 | **Phase 2** (operational health) | ~1 week | Customer needs to trust "9/10 agents reporting" before they bet on us. |
 | 5 | **Phase 5a** (S3 upload option) | ~1 week | Just the upload path — lifecycle policies wait. Closes the "robot dies, data lost" durability concern. |
@@ -327,54 +327,113 @@ The architectural keystone. Everything else depends on this.
 Both robots' sessions visible in the hub UI. Click a session, scrub
 it. Tested in CI with two agent instances + one hub.
 
-### Phase 1.7 — Topic rendering breadth (target: 3 days)
+### Phase 1.7 — Topic rendering breadth + fleet-ready UI (target: 5-6 days)
 
 Driven by the design target (fleet-scale ROS 2 robotics, 30–70 topics
 per robot, custom message types). Today's UI specializes three
 message-type families (CompressedImage, TFMessage+Path, Twist on
 `/cmd_vel`) and renders ~3% of a real 30–70 topic config. P1.7 raises
-that to ~70% without forcing customers to publish into specific topic
-names, and without locking the product to any one vertical.
+that to ~70%, and adds the left-rail UX patterns that fleet operators
+expect (adapted from ros2_medkit's web UI via pattern-borrowing, not
+forking — same React + Tailwind stack).
 
-1. **Generic scalar chart panel.** New `TrackScalar.tsx` component
-   that renders any numeric field (Float32/Float64/int) given a
-   topic + dotted field path (e.g.
-   `/mag_fl_003/bms_feedback.percentage`,
-   `/mag_fl_003/motor_feedback.current_a`). Reuses the
-   field-walking logic from the agent's `decoder.py` (CDR field
-   reader) on the web side so the format stays consistent.
-2. **JSON message inspector panel.** For structured topics where the
-   engineer wants to see the current decoded message at the playhead
-   (`vda_state`, `robot_state_fms`, `active_warnings`, etc.). Tree
-   view, collapsible. ~the shape of medkit's data panel, but synced
-   to the scrubber.
-3. **Configurable velocity-chart source topic.** Velocity chart
-   currently hardcoded to `/cmd_vel`. Real fleets have multiple
-   (e.g. `nav/cmd_vel`, `dock/cmd_vel`, `fl_base_controller/cmd_vel`).
-   New config: `velocity_topic` (default `/cmd_vel`, can be set per
-   session/robot via agent config).
-4. **Topic-list expander on session list + detail.** Click "N topics"
-   to expand inline; shows topic name + decoded payload size estimate.
-   Makes the "20 topics" badge meaningful at scale.
-5. **"Open in Foxglove" deep-link button** on session detail. For any
-   topic MissionDebug doesn't render natively, the engineer is one
-   click away from the standards-anchor partner. Reinforces the wedge
-   instead of competing with it.
-6. Tests:
-   - Generic scalar chart against `sensor_msgs/msg/BatteryState`
-     percentage field over time; values match the decoded message.
-   - JSON inspector renders a synthetic `vda_state` message; updates
-     when the playhead moves past a new message.
-   - Velocity chart source topic is configurable; sample_drive still
-     renders `/cmd_vel` by default.
-   - Topic list expander works for sessions with 1, 5, and 70 topics.
+Sub-phased so each piece is shippable independently:
 
-**Deliverable:** Take a real ≥50-topic production config (warehouse
-AGV, drone, manipulator, or other ROS 2 fleet shape — the reference
-warehouse-AGV config in `examples/` is the test case), generate a
-fixture session for it, render in the web UI. ≥70% of topics produce
-a visible panel; the rest are discoverable via the topic-list
-expander + Foxglove deep-link.
+#### P1.7.1 — UI polish primitives (~1 day)
+
+Foundation that everything else uses. Zero risk to existing UX.
+
+1. **Skeleton loaders** for SessionList, SessionDetail, and AnnotationsPanel
+   while their `useQuery` calls are pending. Replaces the current
+   "Loading…" string.
+2. **EmptyState component** for the "no sessions yet" / "no annotations"
+   / "no robots reporting" surfaces. Shared design, consistent voice.
+3. **ErrorBoundary** at the route level. Catches render errors,
+   shows a recoverable error card instead of a blank white page.
+4. **Theme toggle** (light/dark). Tailwind dark-mode class strategy,
+   single component, persisted via `localStorage`.
+
+#### P1.7.2 — Hierarchical filter rail (~1 day)
+
+Replaces the current flat robot-button row on SessionList. Breaks
+at >20 robots today.
+
+5. New left-rail filter component grouping sessions by
+   **subsystem → robot**. Collapsible groups. Shows session counts
+   per branch. Click a leaf to filter, click a branch to filter all
+   robots in that subsystem.
+6. URL state: `?subsystem=navigation&robot=robot-001` reflects the
+   selection so deep-links survive page reloads.
+7. Falls back gracefully on single-robot / no-subsystem deployments
+   (Hard Rule 18) — rail hides itself when there's only one robot
+   and no subsystems are set.
+
+#### P1.7.3 — Command palette (~half day)
+
+8. `cmd+K` opens a search-anywhere palette (`cmdk` library).
+   Indexes: every session id, robot_id, subsystem, recent labels.
+   Tab + arrow keys. Enter navigates.
+
+#### P1.7.4 — Generic scalar chart panel (~1 day)
+
+9. New `TrackScalar.tsx` component that renders any numeric field
+   (Float32/Float64/int) given a topic + dotted field path (e.g.
+   `/battery_state.percentage`, `/joint_states.position[0]`).
+   Reuses the field-walking logic from the agent's `decoder.py` on
+   the web side so format stays consistent.
+
+#### P1.7.5 — JSON message inspector (~1 day)
+
+10. New `TrackJsonInspector.tsx` for structured topics where the
+    engineer wants to see the current decoded message at the playhead
+    (`robot_state_fms`, `active_warnings`, custom state messages).
+    Tree view, collapsible, syncs to the scrubber. Inspired by
+    medkit's data panel but synced to time, not live.
+
+#### P1.7.6 — Velocity-chart source topic + topic-list expander + Foxglove deep-link (~half day)
+
+11. **Configurable velocity-chart source topic.** Currently hardcoded
+    to `/cmd_vel`. Real fleets have multiple (`nav/cmd_vel`,
+    `dock/cmd_vel`, `fl_base_controller/cmd_vel`). New config field,
+    default `/cmd_vel`.
+12. **Topic-list expander** on session list + detail. Click "N topics"
+    to expand inline; shows topic names. Makes the "20 topics" badge
+    meaningful at scale.
+13. **"Open in Foxglove" deep-link button** on session detail. For
+    any topic MissionDebug doesn't render natively, the engineer is
+    one click away from the standards-anchor partner.
+
+#### Tests
+
+- TrackScalar against `sensor_msgs/msg/BatteryState` percentage over
+  time; values match the decoded message.
+- JSON inspector renders a synthetic state message; updates when the
+  playhead moves past a new message.
+- Velocity-chart source topic is configurable; sample_drive still
+  renders `/cmd_vel` by default.
+- Topic-list expander works for sessions with 1, 5, and 70 topics.
+- Filter rail: single-robot deployment hides the rail; multi-robot
+  deployment shows it; URL state reflects subsystem + robot
+  selection.
+- ErrorBoundary catches a deliberately-thrown render error and shows
+  recovery UI without crashing the page.
+
+#### Deliverable
+
+A fresh visitor to the demo on a 50+ topic session sees:
+
+- Fleet → Subsystem → Robot filter rail on the left (or hidden if
+  single-robot)
+- Polished loading states; no white flash on first paint
+- ≥70% of topics produce a visible panel (scalar chart, JSON
+  inspector, video, pose, or velocity)
+- Topic list expandable to surface what's captured but not rendered
+- One-click Foxglove handoff for anything else
+- cmd+K to jump anywhere
+
+The remaining ~30% of unrendered topics (point clouds, occupancy
+grids, custom binary blobs) stay deliberately deferred — Foxglove
+Studio is the right tool for them.
 
 ### Phase 2 — Operational health (target: 1 week)
 
