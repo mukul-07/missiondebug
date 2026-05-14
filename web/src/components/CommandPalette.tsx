@@ -87,6 +87,27 @@ export function CommandPalette() {
               No matches.
             </Command.Empty>
 
+            <Command.Group heading="Pages" className="px-1 py-1 text-xs text-muted">
+              <Command.Item
+                value="pages fleet health agents operational"
+                onSelect={closeAnd(() => navigate("/fleet/agents"))}
+                className="px-2 py-1.5 rounded text-sm text-text hover:bg-bg cursor-pointer data-[selected=true]:bg-bg"
+              >
+                <div>Fleet health</div>
+                <div className="text-xs text-muted">
+                  See which agents are reporting · /fleet/agents
+                </div>
+              </Command.Item>
+              <Command.Item
+                value="pages sessions list home"
+                onSelect={closeAnd(() => navigate("/"))}
+                className="px-2 py-1.5 rounded text-sm text-text hover:bg-bg cursor-pointer data-[selected=true]:bg-bg"
+              >
+                <div>Sessions</div>
+                <div className="text-xs text-muted">All captured sessions · /</div>
+              </Command.Item>
+            </Command.Group>
+
             {sessions.length > 0 ? (
               <Command.Group heading="Sessions" className="px-1 py-1 text-xs text-muted">
                 {sessions.slice(0, 50).map((s) => (

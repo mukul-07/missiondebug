@@ -1,6 +1,7 @@
-import { Link, Route, Routes } from "react-router-dom";
+import { Link, NavLink, Route, Routes } from "react-router-dom";
 import { SessionList } from "./components/SessionList";
 import { SessionDetail } from "./components/SessionDetail";
+import { AgentHealth } from "./components/AgentHealth";
 import { CommandPalette } from "./components/CommandPalette";
 import { ErrorBoundary } from "./components/ui/ErrorBoundary";
 import { ThemeToggle } from "./components/ui/ThemeToggle";
@@ -12,7 +13,25 @@ export default function App() {
         <Link to="/" className="font-semibold">
           MissionDebug <span className="text-muted text-xs">v0</span>
         </Link>
-        <span className="text-muted text-xs">localhost</span>
+        <nav className="flex items-center gap-3 text-sm text-muted">
+          <NavLink
+            to="/"
+            end
+            className={({ isActive }) =>
+              isActive ? "text-text" : "hover:text-text"
+            }
+          >
+            Sessions
+          </NavLink>
+          <NavLink
+            to="/fleet/agents"
+            className={({ isActive }) =>
+              isActive ? "text-text" : "hover:text-text"
+            }
+          >
+            Fleet
+          </NavLink>
+        </nav>
         <div className="ml-auto flex items-center gap-2">
           <span
             className="text-[10px] text-muted border border-border rounded px-1.5 py-0.5"
@@ -28,6 +47,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<SessionList />} />
             <Route path="/sessions/:id" element={<SessionDetail />} />
+            <Route path="/fleet/agents" element={<AgentHealth />} />
           </Routes>
         </ErrorBoundary>
       </main>
