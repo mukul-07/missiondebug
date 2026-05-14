@@ -11,6 +11,45 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.responses import FileResponse
+from starlette.types import Scope
+
+
+class SpaStaticFiles(StaticFiles):
+    """StaticFiles + SPA-fallback.
+
+    Default StaticFiles returns 404 for any path that doesn't map to a
+    real file on disk. That breaks deep-linked routes the React app
+    handles client-side (e.g. /sessions/<id>?t=10.0) — pasting a Copy-
+    link URL into a fresh tab would hit FastAPI's 404 JSON instead of
+    the SPA shell.
+
+    Override: on 404, fall back to index.html unless the request was
+    for a real-looking asset (has a file extension), in which case
+    the 404 is correct. The SPA then reads location.pathname and
+    routes accordingly.
+    """
+
+    async def get_response(self, path: str, scope: Scope):
+        try:
+            return await super().get_response(path, scope)
+        except StarletteHTTPException as ex:
+            if ex.status_code != 404:
+                raise
+            # API paths must return JSON 404s, not the SPA shell — masking
+            # /api/* 404s would silently break clients (curl, agents, etc.).
+            if path.startswith("api/") or path == "api":
+                raise
+            # Asset paths (with a file extension in the last segment) also
+            # let the 404 stand — failing fast is better than silently
+            # serving the SPA shell where a real .js/.css was expected.
+            if "." in path.rsplit("/", 1)[-1]:
+                raise
+            # Otherwise it's a SPA deep-link (e.g. /sessions/<id>): serve
+            # index.html and let React Router handle it client-side.
+            index = Path(self.directory) / "index.html"
+            return FileResponse(index)
 
 from .db import Db
 from .retention import run_periodic as run_retention, sweep_once
@@ -184,7 +223,7 @@ def build_app(
     # serving it from the same origin avoids CORS + a separate static
     # server entirely.
     if web_dir is not None and web_dir.exists():
-        app.mount("/", StaticFiles(directory=str(web_dir), html=True), name="web")
+        app.mount("/", SpaStaticFiles(directory=str(web_dir), html=True), name="web")
         log.info("Serving web UI from %s", web_dir)
 
     return app
