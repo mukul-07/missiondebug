@@ -40,6 +40,15 @@ export function SessionList() {
     refetchInterval: 30_000,
   });
 
+  // Compute groups before any early return. Rules of Hooks: hook
+  // calls must run unconditionally in the same order every render.
+  // Calling useRailGroups after `if (isLoading) return …` triggers
+  // React error #310 the first time `data` resolves.
+  const sessions = data?.sessions ?? [];
+  const robots = data?.robots ?? [];
+  const groups = useRailGroups(agents, sessions, robots);
+  const showRail = groups !== null;
+
   if (isLoading) {
     return (
       <div className="p-4 grid gap-2 max-w-3xl">
@@ -49,15 +58,6 @@ export function SessionList() {
     );
   }
   if (error) return <div className="p-4 text-accent">Error: {String(error)}</div>;
-
-  const sessions = data?.sessions ?? [];
-  const robots = data?.robots ?? [];
-
-  // Compute groups once via the same hook the rail uses, so we know
-  // whether to render the rail layout at all (multi-robot or any
-  // subsystem) vs the v1.5 flat layout (single robot, no subsystem).
-  const groups = useRailGroups(agents, sessions, robots);
-  const showRail = groups !== null;
 
   const totalRobots = robots.length;
   const summary = sessions.length === 0
