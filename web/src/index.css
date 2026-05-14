@@ -2,8 +2,44 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ---- Theme tokens ----------------------------------------------------
+   Default theme is dark (preserves v1.5 look). Adding `class="light"` to
+   <html> swaps in the light palette. The ThemeToggle component flips it
+   and persists choice to localStorage.
+
+   Tailwind's color names (bg, panel, border, text, muted, accent) all
+   resolve through these vars via tailwind.config.ts — so no component
+   needs to change to support both themes.
+------------------------------------------------------------------------*/
+:root {
+  --color-bg: #0b0d10;
+  --color-panel: #13161b;
+  --color-border: #23272e;
+  --color-text: #e7e9ee;
+  --color-muted: #7d8590;
+  --color-accent: #ff5a5f;
+}
+
+html.light {
+  --color-bg: #f7f8fa;
+  --color-panel: #ffffff;
+  --color-border: #d8dde4;
+  --color-text: #1f2328;
+  --color-muted: #6e7681;
+  --color-accent: #d12d2d;
+}
+
 html, body, #root {
   height: 100%;
   margin: 0;
   font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+/* Subtle shimmer animation used by the Skeleton component. */
+@keyframes md-skeleton-shimmer {
+  0% { opacity: 0.55; }
+  50% { opacity: 0.85; }
+  100% { opacity: 0.55; }
 }

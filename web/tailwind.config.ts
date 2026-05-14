@@ -1,16 +1,22 @@
 import type { Config } from "tailwindcss";
 
+/**
+ * Tailwind config — colors are wired to CSS variables in index.css so the
+ * theme can be switched at runtime by toggling `class="light"` on <html>.
+ * No component needs to know about themes; everything keeps using
+ * `bg-bg`, `bg-panel`, `text-muted`, etc.
+ */
 export default {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
   theme: {
     extend: {
       colors: {
-        bg: "#0b0d10",
-        panel: "#13161b",
-        border: "#23272e",
-        text: "#e7e9ee",
-        muted: "#7d8590",
-        accent: "#ff5a5f",
+        bg: "var(--color-bg)",
+        panel: "var(--color-panel)",
+        border: "var(--color-border)",
+        text: "var(--color-text)",
+        muted: "var(--color-muted)",
+        accent: "var(--color-accent)",
       },
     },
   },

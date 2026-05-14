@@ -2,6 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import { listSessions, type SessionSummary } from "../api/sessions";
 import { Card } from "./ui/Card";
+import { EmptyState } from "./ui/EmptyState";
+import { SkeletonSessionList } from "./ui/Skeleton";
 
 function relativeTime(ms: number): string {
   const d = Date.now() - ms;
@@ -25,7 +27,14 @@ export function SessionList() {
     refetchInterval: 5_000,
   });
 
-  if (isLoading) return <div className="p-4 text-muted">Loading…</div>;
+  if (isLoading) {
+    return (
+      <div className="p-4 grid gap-2 max-w-3xl">
+        <div className="text-lg">Sessions</div>
+        <SkeletonSessionList count={5} />
+      </div>
+    );
+  }
   if (error) return <div className="p-4 text-accent">Error: {String(error)}</div>;
 
   const sessions = data?.sessions ?? [];
@@ -84,11 +93,19 @@ export function SessionList() {
       </div>
 
       {sessions.length === 0 ? (
-        <div className="text-muted text-sm">
-          {robotFilter
-            ? `No sessions for robot "${robotFilter}".`
-            : "No sessions yet. Start the agent and POST to /sessions/save or wait for an anomaly."}
-        </div>
+        <EmptyState
+          icon="📼"
+          title={
+            robotFilter
+              ? `No sessions for ${robotFilter}`
+              : "No sessions yet"
+          }
+          description={
+            robotFilter
+              ? "Try clearing the robot filter, or trigger an anomaly on this robot."
+              : "Start the agent and trigger an anomaly — or POST to /sessions/save manually."
+          }
+        />
       ) : (
         sessions.map((s: SessionSummary) => (
           <Link key={s.id} to={`/sessions/${encodeURIComponent(s.id)}`}>
