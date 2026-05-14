@@ -1,11 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import type {
   ChannelInfo,
+  DecodedScalar,
   DecodedTf,
   DecodedTwist,
   DecodedVideoFrame,
   WorkerOutbound,
 } from "../workers/types";
+
+export interface ScalarTrack {
+  topic: string;
+  fieldPath: string;
+  samples: DecodedScalar[];
+}
 
 export interface LoadedSession {
   channels: ChannelInfo[];
@@ -14,6 +21,7 @@ export interface LoadedSession {
   videoByTopic: Map<string, DecodedVideoFrame[]>;
   twistByTopic: Map<string, DecodedTwist[]>;
   tfByTopic: Map<string, DecodedTf[]>;
+  scalarByTopic: Map<string, ScalarTrack>;
   done: boolean;
   error: string | null;
 }
@@ -25,6 +33,7 @@ const empty = (): LoadedSession => ({
   videoByTopic: new Map(),
   twistByTopic: new Map(),
   tfByTopic: new Map(),
+  scalarByTopic: new Map(),
   done: false,
   error: null,
 });
@@ -94,6 +103,19 @@ export function useMcapLoader(url: string | null): LoadedSession {
           cur.tfByTopic.set(m.msg.topic, arr);
           break;
         }
+        case "scalar": {
+          let track = cur.scalarByTopic.get(m.msg.topic);
+          if (track === undefined) {
+            track = {
+              topic: m.msg.topic,
+              fieldPath: m.msg.fieldPath,
+              samples: [],
+            };
+            cur.scalarByTopic.set(m.msg.topic, track);
+          }
+          track.samples.push(m.msg);
+          break;
+        }
         case "done": {
           for (const arr of cur.videoByTopic.values())
             arr.sort((a, b) => Number(a.timeNs - b.timeNs));
@@ -101,6 +123,8 @@ export function useMcapLoader(url: string | null): LoadedSession {
             arr.sort((a, b) => Number(a.timeNs - b.timeNs));
           for (const arr of cur.tfByTopic.values())
             arr.sort((a, b) => Number(a.timeNs - b.timeNs));
+          for (const track of cur.scalarByTopic.values())
+            track.samples.sort((a, b) => Number(a.timeNs - b.timeNs));
           // Create new Map references so React's reference-equality picks
           // up the data accumulated via in-place mutation in the cases above.
           const updated = {
@@ -108,6 +132,7 @@ export function useMcapLoader(url: string | null): LoadedSession {
             videoByTopic: new Map(cur.videoByTopic),
             twistByTopic: new Map(cur.twistByTopic),
             tfByTopic: new Map(cur.tfByTopic),
+            scalarByTopic: new Map(cur.scalarByTopic),
             done: true,
           };
           stateRef.current = updated;

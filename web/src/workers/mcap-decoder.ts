@@ -33,6 +33,61 @@ function classify(schemaName: string): ChannelKind {
   return "other";
 }
 
+/**
+ * P1.7.4 — heuristic field picker for the auto-scalar chart.
+ *
+ * Given a decoded message, find the first useful numeric leaf and
+ * return its dotted path + value. Skips fields that look like metadata
+ * (sequence numbers, timestamps, frame ids) and primitive arrays
+ * (positions, velocities — those need an index, deferred to manual
+ * config).
+ *
+ * Returns null if no useful scalar found.
+ */
+const SKIP_KEYS = new Set([
+  "seq",
+  "sec",
+  "nanosec",
+  "stamp",
+  "frame_id",
+  "child_frame_id",
+  "header",
+  "covariance",
+]);
+
+function pickScalarField(
+  value: unknown,
+  path: string[] = [],
+  depth = 0,
+): { fieldPath: string; value: number } | null {
+  // Guard against runaway nested messages.
+  if (depth > 6) return null;
+  if (value === null || value === undefined) return null;
+
+  // Leaf number.
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return { fieldPath: path.join("."), value };
+  }
+  // BigInt timestamps are common in ROS — convert if small enough.
+  if (typeof value === "bigint") {
+    const n = Number(value);
+    if (Number.isFinite(n)) return { fieldPath: path.join("."), value: n };
+    return null;
+  }
+  // Don't drill into arrays — would need index disambiguation. The user
+  // can pick array elements via manual config in a future iteration.
+  if (Array.isArray(value)) return null;
+
+  if (typeof value === "object") {
+    for (const [key, v] of Object.entries(value as Record<string, unknown>)) {
+      if (SKIP_KEYS.has(key)) continue;
+      const got = pickScalarField(v, [...path, key], depth + 1);
+      if (got !== null) return got;
+    }
+  }
+  return null;
+}
+
 class BufferReadable {
   constructor(private readonly buf: Uint8Array) {}
   async size(): Promise<bigint> {
@@ -96,6 +151,11 @@ async function loadAndDecode(url: string): Promise<void> {
 
   const counts: Record<string, number> = {};
   for (const c of channelEntries.values()) counts[c.info.topic] = 0;
+
+  // P1.7.4 — first-message-wins field path per "other" topic. Set on
+  // the first message that yields a numeric leaf via pickScalarField,
+  // then walked the same way on every subsequent message of that topic.
+  const scalarFieldByTopic = new Map<string, string | "none">();
 
   for await (const msg of reader.readMessages()) {
     const ch = channelEntries.get(msg.channelId);
@@ -164,10 +224,54 @@ async function loadAndDecode(url: string): Promise<void> {
           },
         } satisfies WorkerOutbound);
       }
+    } else if (ch.info.kind === "other") {
+      // P1.7.4 — generic scalar extraction. On the first message we
+      // probe for a useful numeric leaf and remember the field path;
+      // on subsequent messages we walk that same path. If the first
+      // probe returns nothing, mark the topic "none" so we don't keep
+      // re-probing every message.
+      const topic = ch.info.topic;
+      let fp = scalarFieldByTopic.get(topic);
+      if (fp === undefined) {
+        const found = pickScalarField(decoded);
+        if (found === null) {
+          scalarFieldByTopic.set(topic, "none");
+          continue;
+        }
+        fp = found.fieldPath;
+        scalarFieldByTopic.set(topic, fp);
+      }
+      if (fp === "none") continue;
+      const v = walkPath(decoded, fp);
+      if (typeof v === "number" && Number.isFinite(v)) {
+        ctx.postMessage({
+          type: "scalar",
+          msg: { topic, timeNs: t, fieldPath: fp, value: v },
+        } satisfies WorkerOutbound);
+      } else if (typeof v === "bigint") {
+        const n = Number(v);
+        if (Number.isFinite(n)) {
+          ctx.postMessage({
+            type: "scalar",
+            msg: { topic, timeNs: t, fieldPath: fp, value: n },
+          } satisfies WorkerOutbound);
+        }
+      }
     }
   }
 
   ctx.postMessage({ type: "done", counts } satisfies WorkerOutbound);
+}
+
+/** Walk a dotted field path on a decoded message. Returns the leaf value or undefined. */
+function walkPath(obj: unknown, path: string): unknown {
+  if (!path) return undefined;
+  let cur: unknown = obj;
+  for (const segment of path.split(".")) {
+    if (cur === null || typeof cur !== "object") return undefined;
+    cur = (cur as Record<string, unknown>)[segment];
+  }
+  return cur;
 }
 
 ctx.addEventListener("message", (ev: MessageEvent<WorkerInbound>) => {

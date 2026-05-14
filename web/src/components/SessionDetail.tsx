@@ -9,6 +9,7 @@ import { AnnotationsPanel } from "./AnnotationsPanel";
 import { Timeline } from "./timeline/Timeline";
 import { TrackVideo } from "./timeline/TrackVideo";
 import { TrackPose } from "./timeline/TrackPose";
+import { TrackScalar } from "./timeline/TrackScalar";
 import { Button } from "./ui/Button";
 
 export function SessionDetail() {
@@ -209,6 +210,21 @@ export function SessionDetail() {
       </div>
 
       <Timeline durationNs={durationNs} twist={primaryTwist} annotations={timelineAnnotations} />
+
+      {/* P1.7.4 — auto-rendered scalar charts for every "other" topic
+          that yielded a numeric leaf. Sorted by sample count desc so
+          the most-active topics show first. Capped at 12 panels to
+          keep the page navigable; the rest are still in the MCAP. */}
+      {loaded.scalarByTopic.size > 0 ? (
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          {Array.from(loaded.scalarByTopic.values())
+            .sort((a, b) => b.samples.length - a.samples.length)
+            .slice(0, 12)
+            .map((track) => (
+              <TrackScalar key={track.topic} track={track} />
+            ))}
+        </div>
+      ) : null}
 
       <div className="flex items-center gap-2">
         <Button onClick={toggle}>{isPlaying ? "Pause" : "Play"}</Button>
