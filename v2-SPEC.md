@@ -184,6 +184,15 @@ target is the *upper* end of fleet complexity, because if v2 serves
   fleet. Customers with 10,000+ robots are v3.
 - Not a marketplace, plugin system, ML-based detector, or
   comparison/diff view. All deferred to v2.5+ pending real customer ask.
+- Not manipulator-specific velocity rendering. v2's velocity track
+  assumes `geometry_msgs/Twist`-shaped command topics (`linear.x` /
+  `angular.z`), which covers ground + drone control. Per-joint
+  velocity rendering for `control_msgs/JointJog`,
+  `std_msgs/Float64MultiArray` on `/joint_group_vel_controller/command`,
+  and `trajectory_msgs/JointTrajectory` (one chart per joint) is a
+  **v2.x follow-up** once a manipulator pilot signals. Until then,
+  manipulator users get the generic scalar grid (P1.7.4) for whatever
+  numeric leaves the worker can extract.
 - Not native mobile. The web UI works on a phone but is not
   responsive-optimized.
 - Not SOC2-attested. Compliance work begins after the first paying
