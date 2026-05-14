@@ -216,12 +216,19 @@ class Db:
         limit: int = 50,
         offset: int = 0,
         robot_id: str | None = None,
+        subsystem: str | None = None,
     ) -> list[SessionRow]:
         sql = "SELECT * FROM sessions"
+        clauses: list[str] = []
         params: list = []
         if robot_id:
-            sql += " WHERE robot_id = ?"
+            clauses.append("robot_id = ?")
             params.append(robot_id)
+        if subsystem:
+            clauses.append("subsystem = ?")
+            params.append(subsystem)
+        if clauses:
+            sql += " WHERE " + " AND ".join(clauses)
         sql += " ORDER BY started_at DESC LIMIT ? OFFSET ?"
         params.extend([limit, offset])
         with self.connect() as conn:

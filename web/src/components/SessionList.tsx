@@ -1,9 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
+import { listAgents } from "../api/agents";
 import { listSessions, type SessionSummary } from "../api/sessions";
 import { Card } from "./ui/Card";
 import { EmptyState } from "./ui/EmptyState";
 import { SkeletonSessionList } from "./ui/Skeleton";
+import { FilterRail, useRailGroups } from "./FilterRail";
 
 function relativeTime(ms: number): string {
   const d = Date.now() - ms;
@@ -20,11 +22,22 @@ function fmtDuration(ms: number): string {
 export function SessionList() {
   const [params, setParams] = useSearchParams();
   const robotFilter = params.get("robot");
+  const subsystemFilter = params.get("subsystem");
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ["sessions", robotFilter],
-    queryFn: () => listSessions(robotFilter),
+    queryKey: ["sessions", robotFilter, subsystemFilter],
+    queryFn: () =>
+      listSessions({ robotId: robotFilter, subsystem: subsystemFilter }),
     refetchInterval: 5_000,
+  });
+
+  // Agents are used by the FilterRail to render the
+  // Fleet → Subsystem → Robot tree. Refetch less aggressively than
+  // sessions — the roster rarely changes mid-incident.
+  const { data: agents = [] } = useQuery({
+    queryKey: ["agents"],
+    queryFn: listAgents,
+    refetchInterval: 30_000,
   });
 
   if (isLoading) {
@@ -40,11 +53,11 @@ export function SessionList() {
   const sessions = data?.sessions ?? [];
   const robots = data?.robots ?? [];
 
-  const setRobot = (r: string | null) => {
-    if (r) params.set("robot", r);
-    else params.delete("robot");
-    setParams(params, { replace: true });
-  };
+  // Compute groups once via the same hook the rail uses, so we know
+  // whether to render the rail layout at all (multi-robot or any
+  // subsystem) vs the v1.5 flat layout (single robot, no subsystem).
+  const groups = useRailGroups(agents, sessions, robots);
+  const showRail = groups !== null;
 
   const totalRobots = robots.length;
   const summary = sessions.length === 0
@@ -52,57 +65,38 @@ export function SessionList() {
     : `${sessions.length} session${sessions.length === 1 ? "" : "s"}` +
       (robotFilter
         ? ` for ${robotFilter}`
+        : subsystemFilter
+        ? ` in ${subsystemFilter}`
         : totalRobots > 0
         ? ` across ${totalRobots} robot${totalRobots === 1 ? "" : "s"}`
         : "");
 
-  return (
-    <div className="p-4 grid gap-2 max-w-3xl">
-      <div className="flex items-center justify-between">
-        <div className="flex items-baseline gap-2">
-          <h2 className="text-lg">Sessions</h2>
-          {summary ? <span className="text-xs text-muted">{summary}</span> : null}
-        </div>
-        {robots.length > 0 && (
-          <div className="flex gap-1 text-xs">
-            <button
-              onClick={() => setRobot(null)}
-              className={`px-2 py-0.5 rounded border ${
-                !robotFilter
-                  ? "bg-accent/20 text-accent border-accent"
-                  : "border-border text-muted hover:text-text"
-              }`}
-            >
-              all
-            </button>
-            {robots.map((r) => (
-              <button
-                key={r}
-                onClick={() => setRobot(r)}
-                className={`px-2 py-0.5 rounded border font-mono ${
-                  robotFilter === r
-                    ? "bg-accent/20 text-accent border-accent"
-                    : "border-border text-muted hover:text-text"
-                }`}
-              >
-                {r}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+  const setSubsystem = (s: string | null) => {
+    if (s) params.set("subsystem", s);
+    else params.delete("subsystem");
+    setParams(params, { replace: true });
+  };
+  const setRobot = (r: string | null) => {
+    if (r) params.set("robot", r);
+    else params.delete("robot");
+    setParams(params, { replace: true });
+  };
 
+  const sessionsBody = (
+    <div className="flex-1 grid gap-2">
       {sessions.length === 0 ? (
         <EmptyState
           icon="📼"
           title={
             robotFilter
               ? `No sessions for ${robotFilter}`
+              : subsystemFilter
+              ? `No sessions in ${subsystemFilter}`
               : "No sessions yet"
           }
           description={
-            robotFilter
-              ? "Try clearing the robot filter, or trigger an anomaly on this robot."
+            robotFilter || subsystemFilter
+              ? "Try clearing the filter, or trigger an anomaly on this robot."
               : "Start the agent and trigger an anomaly — or POST to /sessions/save manually."
           }
         />
@@ -153,6 +147,32 @@ export function SessionList() {
             </Card>
           </Link>
         ))
+      )}
+    </div>
+  );
+
+  return (
+    <div className="p-4">
+      <div className="flex items-baseline gap-2 mb-3">
+        <h2 className="text-lg">Sessions</h2>
+        {summary ? <span className="text-xs text-muted">{summary}</span> : null}
+      </div>
+
+      {showRail ? (
+        <div className="flex gap-4 max-w-5xl">
+          <FilterRail
+            agents={agents}
+            sessions={sessions}
+            robotIds={robots}
+            selectedSubsystem={subsystemFilter}
+            selectedRobot={robotFilter}
+            onSelectSubsystem={setSubsystem}
+            onSelectRobot={setRobot}
+          />
+          {sessionsBody}
+        </div>
+      ) : (
+        <div className="max-w-3xl">{sessionsBody}</div>
       )}
     </div>
   );

@@ -31,10 +31,17 @@ def get_router(get_db) -> APIRouter:
         limit: int = Query(50, ge=1, le=200),
         offset: int = Query(0, ge=0),
         robot_id: str | None = Query(None),
+        subsystem: str | None = Query(None),
         db: Db = Depends(get_db),
     ):
-        """Returns sessions plus the set of known robot_ids for the filter dropdown."""
-        rows = db.list_sessions(limit=limit, offset=offset, robot_id=robot_id)
+        """Returns sessions plus the set of known robot_ids for the filter dropdown.
+        Both `robot_id` and `subsystem` filter independently and can be combined."""
+        rows = db.list_sessions(
+            limit=limit,
+            offset=offset,
+            robot_id=robot_id,
+            subsystem=subsystem,
+        )
         counts = db.annotation_counts()
         return {
             "sessions": [

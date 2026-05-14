@@ -19,10 +19,19 @@ export interface SessionListResult {
   robots: string[];
 }
 
-export async function listSessions(robotId?: string | null): Promise<SessionListResult> {
-  const url = robotId
-    ? `/api/sessions?robot_id=${encodeURIComponent(robotId)}`
-    : "/api/sessions";
+export interface ListSessionsParams {
+  robotId?: string | null;
+  subsystem?: string | null;
+}
+
+export async function listSessions(
+  params?: ListSessionsParams,
+): Promise<SessionListResult> {
+  const qs = new URLSearchParams();
+  if (params?.robotId) qs.set("robot_id", params.robotId);
+  if (params?.subsystem) qs.set("subsystem", params.subsystem);
+  const query = qs.toString();
+  const url = query ? `/api/sessions?${query}` : "/api/sessions";
   const r = await fetch(url);
   if (!r.ok) throw new Error(`listSessions: ${r.status}`);
   const j = await r.json();
