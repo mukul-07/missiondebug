@@ -353,21 +353,88 @@ type ScalarGridProps = {
 };
 
 function ScalarGrid({ tracks, query, onQueryChange }: ScalarGridProps) {
-  const q = query.trim().toLowerCase();
-  const filtered = q
-    ? tracks.filter((t) => t.topic.toLowerCase().includes(q))
-    : tracks;
+  // Chips are committed substrings (?q=imu,motor → ["imu","motor"]).
+  // In-progress draft is what the user is typing right now; it filters
+  // live on top of the chips and becomes a chip on Enter.
+  const chips = query
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter((s) => s.length > 0);
+  const [draft, setDraft] = useState("");
+  const draftLower = draft.trim().toLowerCase();
+
+  // OR-match across chips. The live draft, if any, also acts as an OR
+  // chip so the user sees what their next commit will add.
+  const activeNeedles = draftLower ? [...chips, draftLower] : chips;
+  const filtered = activeNeedles.length === 0
+    ? tracks
+    : tracks.filter((t) => {
+        const name = t.topic.toLowerCase();
+        return activeNeedles.some((n) => name.includes(n));
+      });
+
+  const commitDraft = () => {
+    if (!draftLower) return;
+    if (chips.includes(draftLower)) {
+      setDraft("");
+      return;
+    }
+    onQueryChange([...chips, draftLower].join(","));
+    setDraft("");
+  };
+  const removeChip = (c: string) => {
+    onQueryChange(chips.filter((x) => x !== c).join(","));
+  };
+  const clearAll = () => {
+    onQueryChange("");
+    setDraft("");
+  };
+
   return (
     <div className="grid gap-2">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <input
           type="text"
-          placeholder="Filter topics…"
-          value={query}
-          onChange={(e) => onQueryChange(e.target.value)}
-          className="bg-bg border border-border rounded px-2 py-1 text-xs font-mono outline-none focus:border-accent w-64"
+          placeholder={chips.length === 0 ? "Filter topics… (Enter to add)" : "+ add another…"}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              commitDraft();
+            } else if (e.key === "Backspace" && draft === "" && chips.length > 0) {
+              // Backspace on empty input removes the last chip.
+              removeChip(chips[chips.length - 1]);
+            }
+          }}
+          className="bg-bg border border-border rounded px-2 py-1 text-xs font-mono outline-none focus:border-accent w-56"
         />
-        <span className="text-xs text-muted">
+        {chips.map((c) => (
+          <span
+            key={c}
+            className="inline-flex items-center gap-1 bg-panel border border-border rounded px-2 py-0.5 text-xs font-mono"
+          >
+            {c}
+            <button
+              type="button"
+              onClick={() => removeChip(c)}
+              aria-label={`Remove ${c} filter`}
+              className="text-muted hover:text-fg"
+            >
+              ×
+            </button>
+          </span>
+        ))}
+        {chips.length > 0 ? (
+          <button
+            type="button"
+            onClick={clearAll}
+            className="text-xs text-muted hover:text-fg underline"
+          >
+            clear
+          </button>
+        ) : null}
+        <span className="text-xs text-muted ml-auto">
           {filtered.length} of {tracks.length} scalar topic
           {tracks.length === 1 ? "" : "s"}
         </span>
@@ -379,7 +446,7 @@ function ScalarGrid({ tracks, query, onQueryChange }: ScalarGridProps) {
           ))}
         </div>
       ) : (
-        <div className="text-muted text-xs">No topics match “{query}”.</div>
+        <div className="text-muted text-xs">No topics match the current filter.</div>
       )}
     </div>
   );
