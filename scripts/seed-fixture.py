@@ -72,27 +72,96 @@ PATH_MAX_X = 15.0
 
 
 def make_frame_jpeg(label: str, bg_rgb, t_s: float, pose_x: float, pose_y: float) -> bytes:
+    """Render a single perspective-aisle frame.
+
+    Layout:
+      - Sky/ceiling fills the top third (the `bg_rgb` tint).
+      - Floor is a trapezoid from the horizon to the bottom corners
+        with receding horizontal stripes that scroll toward the viewer
+        as `pose_x` grows — gives the impression of forward motion.
+      - Left/right walls show evenly-spaced vertical "shelf rib" lines.
+      - The planned path is drawn as a green line down the floor's
+        centerline, and the robot indicator (orange dot) walks along it.
+
+    Everything is still synthetic, but the perspective + scrolling
+    floor reads as a real warehouse aisle at a glance.
+    """
     img = Image.new("RGB", (FRAME_W, FRAME_H), bg_rgb)
     draw = ImageDraw.Draw(img)
 
-    # Top bar with text.
-    draw.rectangle([0, 0, FRAME_W, 26], fill=(0, 0, 0))
+    horizon_y = 80
+    vp_x = FRAME_W // 2
+
+    # ---- Floor trapezoid (filled) ----
+    floor_color = (52, 54, 60)
+    draw.polygon(
+        [(0, FRAME_H), (FRAME_W, FRAME_H), (vp_x + 60, horizon_y), (vp_x - 60, horizon_y)],
+        fill=floor_color,
+    )
+
+    # ---- Side walls (filled) ----
+    wall_color = (38, 40, 48)
+    draw.polygon(
+        [(0, 0), (vp_x - 60, horizon_y), (0, FRAME_H)],
+        fill=wall_color,
+    )
+    draw.polygon(
+        [(FRAME_W, 0), (vp_x + 60, horizon_y), (FRAME_W, FRAME_H)],
+        fill=wall_color,
+    )
+
+    # ---- Shelf ribs on the walls (evenly spaced verticals receding to vp) ----
+    rib_color = (70, 72, 82)
+    # World-space ribs every 1m, scrolling with pose_x. Use a small range
+    # of "world distances" ahead of the robot.
+    for d_world in [k - (pose_x % 1.0) for k in range(1, 12)]:
+        if d_world <= 0.05:
+            continue
+        # 1/d gives a perspective scale; clamp so it stays in-frame.
+        scale = 1.0 / d_world
+        # Left wall: x at floor edge interpolates from 0 (close) toward vp_x-60 (far).
+        far = 1.0 - min(1.0, scale * 0.3)
+        x_left = int(0 + (vp_x - 60) * far)
+        y_top = int(FRAME_H - (FRAME_H - horizon_y) * far)
+        draw.line([(x_left, FRAME_H), (x_left, y_top)], fill=rib_color, width=1)
+        # Mirror for right wall.
+        x_right = FRAME_W - x_left
+        draw.line([(x_right, FRAME_H), (x_right, y_top)], fill=rib_color, width=1)
+
+    # ---- Floor stripes (perspective rows receding to vanishing point) ----
+    stripe_color = (66, 68, 76)
+    # Same world-space spacing as ribs so the floor lines up with them.
+    for d_world in [k - (pose_x % 1.0) for k in range(1, 14)]:
+        if d_world <= 0.05:
+            continue
+        far = 1.0 - min(1.0, 1.0 / d_world * 0.3)
+        y = int(FRAME_H - (FRAME_H - horizon_y) * far)
+        # Width tapers toward vanishing point.
+        x_left = int(0 + (vp_x - 60) * far)
+        x_right = FRAME_W - x_left
+        draw.line([(x_left, y), (x_right, y)], fill=stripe_color, width=1)
+
+    # ---- Horizon line (subtle, just for orientation) ----
+    draw.line([(0, horizon_y), (FRAME_W, horizon_y)], fill=(90, 92, 102), width=1)
+
+    # ---- Planned path: down the floor centerline ----
+    plan_color = (90, 200, 110)
+    draw.line([(vp_x, horizon_y + 2), (vp_x, FRAME_H - 4)], fill=plan_color, width=2)
+
+    # ---- Robot indicator (orange dot) ----
+    # Bottom of frame = "here" (where the robot is). Lateral pose_y
+    # shifts it left/right so path deviation is visible.
+    indicator_y = FRAME_H - 18
+    indicator_x = vp_x + int(pose_y * 60)
+    draw.ellipse(
+        [indicator_x - 7, indicator_y - 7, indicator_x + 7, indicator_y + 7],
+        fill=(255, 140, 0), outline=(20, 20, 20),
+    )
+
+    # ---- Top status bar (always on top) ----
+    draw.rectangle([0, 0, FRAME_W, 22], fill=(0, 0, 0))
     text = f"{label}  t={t_s:5.2f}s  x={pose_x:5.2f}  y={pose_y:+.2f}"
-    draw.text((6, 5), text, fill=(255, 255, 255))
-
-    # Horizon line.
-    horizon_y = 110
-    draw.line([(0, horizon_y), (FRAME_W, horizon_y)], fill=(80, 80, 100), width=1)
-
-    # Planned path: thin straight line at the horizon's y level.
-    plan_y = horizon_y + 30
-    draw.line([(20, plan_y), (FRAME_W - 20, plan_y)], fill=(80, 130, 80), width=2)
-
-    # Robot indicator: orange circle that walks along the path with x,
-    # bumps off-line vertically with y. y=0 is on the line; y=+1 lifts it.
-    cx = int(20 + min(1.0, pose_x / PATH_MAX_X) * (FRAME_W - 40))
-    cy = plan_y + int(-pose_y * 30)
-    draw.ellipse([cx - 8, cy - 8, cx + 8, cy + 8], fill=(255, 140, 0), outline=(0, 0, 0))
+    draw.text((6, 4), text, fill=(230, 230, 230))
 
     buf = io.BytesIO()
     img.save(buf, format="JPEG", quality=70)
