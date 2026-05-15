@@ -10,7 +10,7 @@ Designed to exercise everything v2 P1.7 added:
 Uses the `mcap` Python library directly with hand-crafted ros2msg
 schema text + CDR-encoded payloads. No ROS install required.
 
-Output: fixtures/stress_30_topics.mcap
+Output: fixtures/warehouse_robot_30_topics.mcap
 
 Topic shape (deliberately mixed to simulate a real warehouse-AGV fleet):
    8 scalar diagnostics  (battery/motor/temperature/current)
@@ -31,7 +31,7 @@ from pathlib import Path
 
 from mcap.writer import Writer
 
-OUT_PATH = Path(__file__).resolve().parent.parent / "fixtures" / "stress_30_topics.mcap"
+OUT_PATH = Path(__file__).resolve().parent.parent / "fixtures" / "warehouse_robot_30_topics.mcap"
 
 ROBOT_ID = "stress-robot-01"
 SESSION_DURATION_S = 30.0
@@ -281,7 +281,7 @@ def main() -> None:
         writer.add_metadata(
             "missiondebug",
             {
-                "session_id": "stress_30_topics",
+                "session_id": "warehouse_robot_30_topics",
                 "robot_id": ROBOT_ID,
                 "label": "fixture:stress-30",
                 "duration_ms": str(int(SESSION_DURATION_S * 1000)),
