@@ -14,7 +14,7 @@ When a robot misbehaves, you want the 60 seconds *before* — what it was seeing
 
 Standards-native. Local-first. No cloud, no login, no proprietary format.
 
-![Demo — trigger an anomaly, session auto-saves, replay it](docs/demo.gif)
+https://github.com/mukul-07/missiondebug/raw/main/docs/demo.mp4
 
 ## How MissionDebug fits
 
