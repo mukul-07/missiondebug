@@ -238,6 +238,42 @@ class ResolutionRow:
         )
 
 
+@dataclass
+class FleetSessionRow:
+    """Denormalised session + resolution view used by the v2 P3.5.6b
+    fleet stats endpoint. Lets the dashboard scan the whole window in
+    a single query and compute every KPI in one Python pass."""
+
+    id: str
+    robot_id: str
+    label: str | None
+    started_at: int  # unix ms
+    subsystem: str | None
+    summary: str | None
+    res_status: str | None  # NULL => implicit "open"
+    res_resolved_at: int | None
+    res_duplicate_of: str | None
+
+    @classmethod
+    def from_row(cls, r: sqlite3.Row) -> "FleetSessionRow":
+        return cls(
+            id=r["id"],
+            robot_id=r["robot_id"],
+            label=r["label"],
+            started_at=r["started_at"],
+            subsystem=r["subsystem"],
+            summary=r["summary"],
+            res_status=r["res_status"],
+            res_resolved_at=r["res_resolved_at"],
+            res_duplicate_of=r["res_duplicate_of"],
+        )
+
+    @property
+    def effective_status(self) -> str:
+        """The resolution status the dashboard reads. NULL row → 'open'."""
+        return self.res_status or "open"
+
+
 class Db:
     def __init__(self, path: str | Path) -> None:
         self._path = str(path)
@@ -597,6 +633,35 @@ class Db:
             )
             conn.commit()
             return cur.rowcount > 0
+
+    def list_sessions_in_window(
+        self,
+        *,
+        started_at_gte: int,
+        started_at_lt: int,
+    ) -> list["FleetSessionRow"]:
+        """Sessions started within `[started_at_gte, started_at_lt)` joined
+        with their resolution status (if any). Powers the v2 P3.5.6b fleet
+        stats endpoint — one query covers captures + resolution rollups
+        + MTTR + per-pattern aggregation.
+        """
+        with self.connect() as conn:
+            cur = conn.execute(
+                """
+                SELECT
+                  s.id, s.robot_id, s.label, s.started_at,
+                  s.subsystem, s.summary,
+                  r.status AS res_status,
+                  r.resolved_at AS res_resolved_at,
+                  r.duplicate_of AS res_duplicate_of
+                FROM sessions s
+                LEFT JOIN session_resolutions r ON r.session_id = s.id
+                WHERE s.started_at >= ? AND s.started_at < ?
+                ORDER BY s.started_at ASC
+                """,
+                (started_at_gte, started_at_lt),
+            )
+            return [FleetSessionRow.from_row(r) for r in cur.fetchall()]
 
     # ---- retention --------------------------------------------------
 

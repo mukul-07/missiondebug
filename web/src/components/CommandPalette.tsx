@@ -89,13 +89,23 @@ export function CommandPalette() {
 
             <Command.Group heading="Pages" className="px-1 py-1 text-xs text-muted">
               <Command.Item
+                value="pages fleet incidents dashboard kpi mttr resolution recurrence"
+                onSelect={closeAnd(() => navigate("/fleet/incidents"))}
+                className="px-2 py-1.5 rounded text-sm text-text hover:bg-bg cursor-pointer data-[selected=true]:bg-bg"
+              >
+                <div>Fleet incidents</div>
+                <div className="text-xs text-muted">
+                  MTTR, resolution rate, top patterns · /fleet/incidents
+                </div>
+              </Command.Item>
+              <Command.Item
                 value="pages fleet health agents operational"
                 onSelect={closeAnd(() => navigate("/fleet/agents"))}
                 className="px-2 py-1.5 rounded text-sm text-text hover:bg-bg cursor-pointer data-[selected=true]:bg-bg"
               >
-                <div>Fleet health</div>
+                <div>Fleet agents</div>
                 <div className="text-xs text-muted">
-                  See which agents are reporting · /fleet/agents
+                  Which agents are reporting · /fleet/agents
                 </div>
               </Command.Item>
               <Command.Item

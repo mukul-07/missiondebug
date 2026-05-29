@@ -2,6 +2,7 @@ import { Link, NavLink, Route, Routes } from "react-router-dom";
 import { SessionList } from "./components/SessionList";
 import { SessionDetail } from "./components/SessionDetail";
 import { AgentHealth } from "./components/AgentHealth";
+import { FleetIncidents } from "./components/FleetIncidents";
 import { CommandPalette } from "./components/CommandPalette";
 import { ErrorBoundary } from "./components/ui/ErrorBoundary";
 import { ThemeToggle } from "./components/ui/ThemeToggle";
@@ -24,12 +25,20 @@ export default function App() {
             Sessions
           </NavLink>
           <NavLink
+            to="/fleet/incidents"
+            className={({ isActive }) =>
+              isActive ? "text-text" : "hover:text-text"
+            }
+          >
+            Incidents
+          </NavLink>
+          <NavLink
             to="/fleet/agents"
             className={({ isActive }) =>
               isActive ? "text-text" : "hover:text-text"
             }
           >
-            Fleet
+            Agents
           </NavLink>
         </nav>
         <div className="ml-auto flex items-center gap-2">
@@ -47,6 +56,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<SessionList />} />
             <Route path="/sessions/:id" element={<SessionDetail />} />
+            <Route path="/fleet/incidents" element={<FleetIncidents />} />
             <Route path="/fleet/agents" element={<AgentHealth />} />
           </Routes>
         </ErrorBoundary>
