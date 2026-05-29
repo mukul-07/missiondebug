@@ -15,6 +15,7 @@ import { TopicListExpander } from "./TopicListExpander";
 import { FoxgloveButton } from "./FoxgloveButton";
 import { Button } from "./ui/Button";
 import { Card } from "./ui/Card";
+import { SimilarIncidents } from "./SimilarIncidents";
 
 export function SessionDetail() {
   const { id } = useParams<{ id: string }>();
@@ -244,14 +245,21 @@ export function SessionDetail() {
         </span>
       </div>
 
-      {meta?.summary ? (
-        <Card className="bg-bg/50">
-          <div className="text-[10px] uppercase tracking-wide text-muted mb-1">
-            Summary
-          </div>
-          <div className="text-sm text-text leading-relaxed">{meta.summary}</div>
-        </Card>
-      ) : null}
+      <div className="grid md:grid-cols-2 gap-3">
+        {meta?.summary ? (
+          <Card className="bg-bg/50">
+            <div className="text-[10px] uppercase tracking-wide text-muted mb-1">
+              Summary
+            </div>
+            <div className="text-sm text-text leading-relaxed">{meta.summary}</div>
+          </Card>
+        ) : (
+          <div />
+        )}
+        {id ? (
+          <SimilarIncidents sessionId={id} hasSummary={!!meta?.summary} />
+        ) : null}
+      </div>
 
       <div className="grid grid-cols-2 gap-3">
         {videoTopics.length > 0 ? (
