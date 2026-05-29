@@ -71,6 +71,36 @@ CREATE TABLE IF NOT EXISTS agent_heartbeats (
 );
 CREATE INDEX IF NOT EXISTS idx_heartbeats_robot_at
   ON agent_heartbeats(robot_id, heartbeat_at DESC);
+
+-- v2 P3.5.6 (incident memory): per-session resolution state.
+-- One row per session that has been triaged. Missing row = implicit
+-- "open" status (the default for any new capture). Powers the fleet
+-- incident dashboard's resolution-rate + MTTR KPIs.
+--
+-- Statuses:
+--   open           — implicit when no row exists
+--   investigating  — someone is actively looking at it
+--   resolved       — fixed, root_cause is set
+--   duplicate      — this is a recurrence of duplicate_of's pattern
+--   wont_fix       — known issue, deliberately not actioned
+--
+-- resolved_at is set only when status transitions to a terminal state
+-- (resolved / duplicate / wont_fix). It is what MTTR aggregation reads.
+CREATE TABLE IF NOT EXISTS session_resolutions (
+  session_id TEXT PRIMARY KEY,
+  status TEXT NOT NULL,
+  root_cause TEXT,
+  linked_ticket TEXT,
+  duplicate_of TEXT,
+  resolved_at INTEGER,
+  edited_by TEXT,
+  edited_at INTEGER NOT NULL,
+  FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_resolutions_status
+  ON session_resolutions(status);
+CREATE INDEX IF NOT EXISTS idx_resolutions_resolved_at
+  ON session_resolutions(resolved_at) WHERE resolved_at IS NOT NULL;
 """
 
 
@@ -158,6 +188,53 @@ class AgentRow:
             agent_version=r["agent_version"],
             agent_url=r["agent_url"],
             subsystem=r["subsystem"],
+        )
+
+
+# v2 P3.5.6 resolution statuses. Kept here (not as an enum) because SQLite
+# stores them as TEXT and Pydantic Field(pattern=...) does runtime validation
+# — a Python enum would duplicate the canonical list without adding safety.
+RESOLUTION_STATUSES = ("open", "investigating", "resolved", "duplicate", "wont_fix")
+TERMINAL_STATUSES = frozenset({"resolved", "duplicate", "wont_fix"})
+
+
+@dataclass
+class ResolutionRow:
+    session_id: str
+    status: str
+    root_cause: str | None
+    linked_ticket: str | None
+    duplicate_of: str | None
+    resolved_at: int | None
+    edited_by: str | None
+    edited_at: int
+
+    @classmethod
+    def from_row(cls, r: sqlite3.Row) -> "ResolutionRow":
+        return cls(
+            session_id=r["session_id"],
+            status=r["status"],
+            root_cause=r["root_cause"],
+            linked_ticket=r["linked_ticket"],
+            duplicate_of=r["duplicate_of"],
+            resolved_at=r["resolved_at"],
+            edited_by=r["edited_by"],
+            edited_at=r["edited_at"],
+        )
+
+    @classmethod
+    def implicit_open(cls, session_id: str) -> "ResolutionRow":
+        """An untriaged session has no row; this is what we hand callers
+        instead of None so the UI doesn't have to branch on null."""
+        return cls(
+            session_id=session_id,
+            status="open",
+            root_cause=None,
+            linked_ticket=None,
+            duplicate_of=None,
+            resolved_at=None,
+            edited_by=None,
+            edited_at=0,
         )
 
 
@@ -443,6 +520,83 @@ class Db:
             )
             conn.commit()
             return cur.rowcount
+
+    # ---- v2 P3.5.6 resolutions --------------------------------------
+
+    def get_resolution(self, session_id: str) -> ResolutionRow | None:
+        with self.connect() as conn:
+            r = conn.execute(
+                "SELECT * FROM session_resolutions WHERE session_id = ?",
+                (session_id,),
+            ).fetchone()
+            return ResolutionRow.from_row(r) if r else None
+
+    def upsert_resolution(
+        self,
+        *,
+        session_id: str,
+        status: str,
+        root_cause: str | None = None,
+        linked_ticket: str | None = None,
+        duplicate_of: str | None = None,
+        edited_by: str | None = None,
+    ) -> ResolutionRow:
+        """Set the resolution for a session. resolved_at is auto-managed:
+        set to now_ms() on first transition into a terminal status; cleared
+        if status moves back to open/investigating. Preserves resolved_at
+        on terminal→terminal transitions (e.g. resolved → duplicate keeps
+        the original timestamp — MTTR measures time-to-first-resolution,
+        not time-to-final-classification)."""
+        if status not in RESOLUTION_STATUSES:
+            raise ValueError(f"unknown status: {status!r}")
+        now = now_ms()
+        with self.connect() as conn:
+            existing = conn.execute(
+                "SELECT status, resolved_at FROM session_resolutions WHERE session_id = ?",
+                (session_id,),
+            ).fetchone()
+
+            if status in TERMINAL_STATUSES:
+                if existing and existing["status"] in TERMINAL_STATUSES:
+                    resolved_at = existing["resolved_at"]  # preserve original
+                else:
+                    resolved_at = now
+            else:
+                resolved_at = None
+
+            conn.execute(
+                """
+                INSERT INTO session_resolutions
+                  (session_id, status, root_cause, linked_ticket, duplicate_of,
+                   resolved_at, edited_by, edited_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(session_id) DO UPDATE SET
+                  status = excluded.status,
+                  root_cause = excluded.root_cause,
+                  linked_ticket = excluded.linked_ticket,
+                  duplicate_of = excluded.duplicate_of,
+                  resolved_at = excluded.resolved_at,
+                  edited_by = excluded.edited_by,
+                  edited_at = excluded.edited_at
+                """,
+                (session_id, status, root_cause, linked_ticket, duplicate_of,
+                 resolved_at, edited_by, now),
+            )
+            conn.commit()
+            r = conn.execute(
+                "SELECT * FROM session_resolutions WHERE session_id = ?",
+                (session_id,),
+            ).fetchone()
+            return ResolutionRow.from_row(r)
+
+    def delete_resolution(self, session_id: str) -> bool:
+        """Revert a session to the implicit 'open' state by dropping its row."""
+        with self.connect() as conn:
+            cur = conn.execute(
+                "DELETE FROM session_resolutions WHERE session_id = ?", (session_id,)
+            )
+            conn.commit()
+            return cur.rowcount > 0
 
     # ---- retention --------------------------------------------------
 
