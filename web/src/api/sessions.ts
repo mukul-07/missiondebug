@@ -89,3 +89,80 @@ export async function getSimilarSessions(
   if (!r.ok) throw new Error(`getSimilarSessions: ${r.status}`);
   return r.json();
 }
+
+/**
+ * v2 P3.5.6 — per-session resolution.
+ *
+ * Untriaged sessions return the implicit-open shape (status='open',
+ * edited_at=0). Terminal statuses (resolved/duplicate/wont_fix) carry
+ * a non-null `resolved_at` which feeds the fleet MTTR KPI.
+ */
+export type ResolutionStatus =
+  | "open"
+  | "investigating"
+  | "resolved"
+  | "duplicate"
+  | "wont_fix";
+
+export const RESOLUTION_STATUSES: ResolutionStatus[] = [
+  "open",
+  "investigating",
+  "resolved",
+  "duplicate",
+  "wont_fix",
+];
+
+export interface Resolution {
+  session_id: string;
+  status: ResolutionStatus;
+  root_cause: string | null;
+  linked_ticket: string | null;
+  duplicate_of: string | null;
+  resolved_at: number | null;
+  edited_by: string | null;
+  /** 0 sentinel = implicit-open (no real row); otherwise unix ms. */
+  edited_at: number;
+}
+
+export async function getResolution(id: string): Promise<Resolution> {
+  const r = await fetch(
+    `/api/v2/sessions/${encodeURIComponent(id)}/resolution`,
+  );
+  if (!r.ok) throw new Error(`getResolution: ${r.status}`);
+  return r.json();
+}
+
+export interface ResolutionPayload {
+  status: ResolutionStatus;
+  root_cause?: string | null;
+  linked_ticket?: string | null;
+  duplicate_of?: string | null;
+  edited_by?: string | null;
+}
+
+export async function putResolution(
+  id: string,
+  payload: ResolutionPayload,
+): Promise<Resolution> {
+  const r = await fetch(
+    `/api/v2/sessions/${encodeURIComponent(id)}/resolution`,
+    {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+  );
+  if (!r.ok) {
+    const text = await r.text();
+    throw new Error(`putResolution: ${r.status} ${text}`);
+  }
+  return r.json();
+}
+
+export async function deleteResolution(id: string): Promise<void> {
+  const r = await fetch(
+    `/api/v2/sessions/${encodeURIComponent(id)}/resolution`,
+    { method: "DELETE" },
+  );
+  if (!r.ok) throw new Error(`deleteResolution: ${r.status}`);
+}

@@ -13,8 +13,13 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { getSimilarSessions, type SimilarIncident } from "../api/sessions";
+import {
+  getResolution,
+  getSimilarSessions,
+  type SimilarIncident,
+} from "../api/sessions";
 import { Card } from "./ui/Card";
+import { ResolutionBadge } from "./ResolutionPanel";
 import { Skeleton } from "./ui/Skeleton";
 
 interface Props {
@@ -129,6 +134,17 @@ function Header({ count }: { count?: number }) {
 }
 
 function SimilarRow({ m }: { m: SimilarIncident }) {
+  // Surface each match's resolution status — that's the high-value
+  // signal: "this happened 2 weeks ago, AND it was resolved (here's the
+  // root cause)" vs "this happened 2 weeks ago and is still open."
+  // Implicit-open responses come back with status='open' so we always
+  // get a badge to show, never an empty corner.
+  const { data: resolution } = useQuery({
+    queryKey: ["resolution", m.session_id],
+    queryFn: () => getResolution(m.session_id),
+    staleTime: 30_000,
+  });
+
   return (
     <Link
       to={`/sessions/${encodeURIComponent(m.session_id)}`}
@@ -136,8 +152,11 @@ function SimilarRow({ m }: { m: SimilarIncident }) {
     >
       <div className="flex items-center justify-between gap-2">
         <div className="font-mono text-xs truncate">{m.session_id}</div>
-        <div className="shrink-0 text-xs px-1.5 py-0.5 rounded bg-accent/20 text-accent font-mono">
-          {scorePct(m.score)}
+        <div className="shrink-0 flex items-center gap-1.5">
+          {resolution ? <ResolutionBadge status={resolution.status} /> : null}
+          <div className="text-xs px-1.5 py-0.5 rounded bg-accent/20 text-accent font-mono">
+            {scorePct(m.score)}
+          </div>
         </div>
       </div>
       <div className="text-[11px] text-muted mt-1">
@@ -147,7 +166,11 @@ function SimilarRow({ m }: { m: SimilarIncident }) {
         {" · "}
         {relativeTime(m.started_at)}
       </div>
-      {m.summary ? (
+      {resolution?.root_cause ? (
+        <div className="text-xs text-text/80 mt-1 line-clamp-2">
+          <span className="text-muted">Root cause:</span> {resolution.root_cause}
+        </div>
+      ) : m.summary ? (
         <div className="text-xs text-text/80 mt-1 line-clamp-2">{m.summary}</div>
       ) : null}
     </Link>

@@ -16,6 +16,7 @@ import { FoxgloveButton } from "./FoxgloveButton";
 import { Button } from "./ui/Button";
 import { Card } from "./ui/Card";
 import { SimilarIncidents } from "./SimilarIncidents";
+import { ResolutionPanel } from "./ResolutionPanel";
 
 export function SessionDetail() {
   const { id } = useParams<{ id: string }>();
@@ -260,6 +261,8 @@ export function SessionDetail() {
           <SimilarIncidents sessionId={id} hasSummary={!!meta?.summary} />
         ) : null}
       </div>
+
+      {id ? <ResolutionPanel sessionId={id} /> : null}
 
       <div className="grid grid-cols-2 gap-3">
         {videoTopics.length > 0 ? (
