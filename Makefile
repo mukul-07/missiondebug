@@ -1,12 +1,20 @@
-.PHONY: dev test fmt lint install package package-agent package-backend package-web fixture
+.PHONY: dev test fmt lint install clean-web package package-agent package-backend package-web fixture
 
-install:
+install: clean-web
 	cd agent && uv sync || pip install -e ".[dev]"
 	cd backend && uv sync || pip install -e ".[dev]"
 	# Backend tests reuse the agent's mcap_writer to seed sessions; install
 	# the agent into backend's venv as an editable dep so tests can import it.
 	cd backend && .venv/bin/python -m pip install -e ../agent || true
 	pnpm -C web install || npm --prefix web install
+
+# Remove stale compiled .js artifacts under web/src/ that can shadow .tsx
+# sources in Vite's module resolution (Vite prefers .js over .tsx when both
+# exist for `import "./Foo"`). Workers are excluded — those .js files are
+# real source, not build output. Gitignored since 2026-05, but any tree that
+# was populated before that rule landed still has them locally.
+clean-web:
+	find web/src -name "*.js" -not -path "*/workers/*" -delete 2>/dev/null || true
 
 dev:
 	bash scripts/dev.sh
