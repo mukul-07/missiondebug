@@ -86,6 +86,13 @@ def test_save_now_with_hub_client_forwards_metadata(tmp_path):
     assert body["started_at"] > 0
     assert body["ended_at"] >= body["started_at"]
     assert body["duration_ms"] >= 0
+    # v2 P3.5.1: structured summary is part of the ingest payload and
+    # the agent's SaveResponse. Forwarded to the hub for session-list
+    # display + downstream embedding pipeline.
+    assert resp.summary is not None
+    assert body["summary"] == resp.summary
+    assert "Auto-triggered by rule 'test'" in body["summary"]
+    assert "robot-001" in body["summary"]
 
 
 def test_save_now_hub_failure_does_not_break_local_save(tmp_path):

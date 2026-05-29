@@ -62,6 +62,43 @@ def test_ingest_creates_session_and_agent(tmp_path):
     assert a["last_heartbeat"] is None  # ingest doesn't tick the heartbeat
 
 
+def test_ingest_round_trips_structured_summary(tmp_path):
+    """v2 P3.5.1: agent-generated structured summary survives the ingest
+    round-trip and is exposed by both the list and detail endpoints.
+    """
+    c = _client(tmp_path)
+    summary = (
+        "Auto-triggered by rule 'stall' at 2026-05-12 10:00:00 UTC on "
+        "robot-001 (subsystem: navigation). Captured 60.0s across 2 "
+        "topics: /cmd_vel (180 msgs), /odom (120 msgs). Total payload: 12.1 KB."
+    )
+    r = c.post(
+        "/api/v1/sessions/ingest",
+        json=_ingest_payload(summary=summary),
+    )
+    assert r.status_code == 200, r.text
+
+    sessions = c.get("/api/sessions").json()["sessions"]
+    assert sessions[0]["summary"] == summary
+
+    detail = c.get(f"/api/sessions/{_ingest_payload()['session_id']}").json()
+    assert detail["summary"] == summary
+
+
+def test_ingest_summary_optional(tmp_path):
+    """Pre-P3.5 agents (or air-gapped deployments that disable the
+    summarizer in a future config flag) can ingest without summary —
+    the column stays null and the rest of the row is unaffected."""
+    c = _client(tmp_path)
+    payload = _ingest_payload()
+    payload.pop("summary", None)
+    r = c.post("/api/v1/sessions/ingest", json=payload)
+    assert r.status_code == 200
+
+    s = c.get("/api/sessions").json()["sessions"][0]
+    assert s["summary"] is None
+
+
 def test_ingest_idempotent(tmp_path):
     """Re-ingesting the same session_id replaces the row (no duplicate)."""
     c = _client(tmp_path)

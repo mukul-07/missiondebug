@@ -21,6 +21,7 @@ def get_router(get_db) -> APIRouter:
             "created_at": row.created_at,
             # v2 fields (optional; null for v1.5 single-robot sessions):
             "subsystem": row.subsystem,
+            "summary": row.summary,
             # source: "agent" means this came in via P1.2 ingest (hub-ingested
             # session); "local" means the backend itself wrote the MCAP file.
             "source": "agent" if row.mcap_url else "local",

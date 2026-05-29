@@ -17,6 +17,7 @@ from pydantic import BaseModel
 from .config import AgentConfig
 from .mcap_writer import SessionMetadata, write_session
 from .ring_buffer import RingBuffer
+from .summarizer import build_summary
 
 if TYPE_CHECKING:
     from .hub_client import HubClient
@@ -36,6 +37,7 @@ class SaveResponse(BaseModel):
     topics: list[str]
     size_bytes: int
     label: str | None
+    summary: str | None = None
 
 
 def _filename(robot_id: str) -> str:
@@ -85,6 +87,18 @@ def save_now(
         meta.session_id, len(snap), meta.duration_ns / 1e9, meta.label,
     )
 
+    # v2 P3.5.1 — structured summary (zero-LLM, deterministic). Generated
+    # from metadata the agent already has at save time, so it costs ~µs
+    # and works fully offline. Forwarded to the hub for the session-list
+    # UI and the upcoming embedding pipeline.
+    summary = build_summary(
+        snap, config,
+        label=meta.label,
+        duration_ns=meta.duration_ns,
+        started_wall_ns=meta.started_wall_ns,
+        size_bytes=meta.size_bytes,
+    )
+
     # v2 P5a — optional S3 upload. Run before reporting to the hub so
     # the hub gets the S3 URL if upload succeeds. On failure, mcap_url
     # in the hub payload stays None, hub_client falls back to the
@@ -107,6 +121,7 @@ def save_now(
             "label": meta.label,
             "topics": meta.topics,
             "mcap_size_bytes": meta.size_bytes,
+            "summary": summary,
         }
         if s3_url is not None:
             payload["mcap_url"] = s3_url
@@ -119,6 +134,7 @@ def save_now(
         topics=meta.topics,
         size_bytes=meta.size_bytes,
         label=meta.label,
+        summary=summary,
     )
 
 

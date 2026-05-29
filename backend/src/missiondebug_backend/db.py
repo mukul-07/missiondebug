@@ -25,7 +25,11 @@ CREATE TABLE IF NOT EXISTS sessions (
   -- v2 additions (Hard Rule 18: agent stays standalone-capable, so these
   -- are nullable and default to NULL for v1.5 single-robot installs).
   mcap_url TEXT,         -- if set, hub fetches from this URL instead of mcap_path
-  subsystem TEXT         -- free-form domain tag, e.g. "navigation" (Hard Rule 23)
+  subsystem TEXT,        -- free-form domain tag, e.g. "navigation" (Hard Rule 23)
+  -- v2 P3.5.1: structured summary computed agent-side at save time.
+  -- Deterministic, immutable once written (Hard Rule 27). Null on
+  -- pre-P3.5 sessions ingested before this column existed.
+  summary TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_started_at
   ON sessions(started_at DESC);
@@ -76,6 +80,7 @@ CREATE INDEX IF NOT EXISTS idx_heartbeats_robot_at
 _V2_COLUMN_ADDS = [
     ("sessions", "mcap_url", "TEXT"),
     ("sessions", "subsystem", "TEXT"),
+    ("sessions", "summary", "TEXT"),
 ]
 
 
@@ -113,6 +118,7 @@ class SessionRow:
     # v2 additions — optional, default None for v1.5 callers.
     mcap_url: str | None = None
     subsystem: str | None = None
+    summary: str | None = None
 
     @classmethod
     def from_row(cls, r: sqlite3.Row) -> "SessionRow":
@@ -130,6 +136,7 @@ class SessionRow:
             created_at=r["created_at"],
             mcap_url=r["mcap_url"] if "mcap_url" in keys else None,
             subsystem=r["subsystem"] if "subsystem" in keys else None,
+            summary=r["summary"] if "summary" in keys else None,
         )
 
 
@@ -198,14 +205,14 @@ class Db:
                 INSERT OR REPLACE INTO sessions
                   (id, robot_id, started_at, ended_at, duration_ms, label,
                    mcap_path, mcap_size_bytes, topics_json, created_at,
-                   mcap_url, subsystem)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   mcap_url, subsystem, summary)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     row.id, row.robot_id, row.started_at, row.ended_at,
                     row.duration_ms, row.label, row.mcap_path,
                     row.mcap_size_bytes, json.dumps(row.topics),
-                    row.created_at, row.mcap_url, row.subsystem,
+                    row.created_at, row.mcap_url, row.subsystem, row.summary,
                 ),
             )
             conn.commit()
