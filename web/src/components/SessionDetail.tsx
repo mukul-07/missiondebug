@@ -14,6 +14,7 @@ import { TrackJsonInspector } from "./timeline/TrackJsonInspector";
 import { TopicListExpander } from "./TopicListExpander";
 import { FoxgloveButton } from "./FoxgloveButton";
 import { Button } from "./ui/Button";
+import { Card } from "./ui/Card";
 
 export function SessionDetail() {
   const { id } = useParams<{ id: string }>();
@@ -242,6 +243,15 @@ export function SessionDetail() {
           {loaded.error ? <span className="text-accent">err: {loaded.error}</span> : loaded.done ? "loaded" : "loading…"}
         </span>
       </div>
+
+      {meta?.summary ? (
+        <Card className="bg-bg/50">
+          <div className="text-[10px] uppercase tracking-wide text-muted mb-1">
+            Summary
+          </div>
+          <div className="text-sm text-text leading-relaxed">{meta.summary}</div>
+        </Card>
+      ) : null}
 
       <div className="grid grid-cols-2 gap-3">
         {videoTopics.length > 0 ? (

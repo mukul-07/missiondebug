@@ -106,7 +106,7 @@ export function SessionList() {
           <Link key={s.id} to={`/sessions/${encodeURIComponent(s.id)}`}>
             <Card className="hover:border-accent cursor-pointer">
               <div className="flex items-center justify-between">
-                <div>
+                <div className="min-w-0 flex-1">
                   <div className="font-mono text-sm">{s.id}</div>
                   <div className="text-xs text-muted">
                     <span className="px-1.5 py-0.5 mr-2 rounded bg-bg border border-border font-mono">
@@ -135,8 +135,16 @@ export function SessionList() {
                       </span>
                     ) : null}
                   </div>
+                  {s.summary ? (
+                    <div
+                      className="text-xs text-text/80 mt-1.5 truncate"
+                      title={s.summary}
+                    >
+                      {s.summary}
+                    </div>
+                  ) : null}
                 </div>
-                <div className="text-xs text-muted flex items-center gap-2">
+                <div className="text-xs text-muted flex items-center gap-2 shrink-0">
                   {s.annotation_count && s.annotation_count > 0 ? (
                     <span className="px-1.5 py-0.5 rounded bg-bg border border-border">
                       📝 {s.annotation_count}

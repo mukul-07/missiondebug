@@ -12,6 +12,10 @@ export interface SessionSummary {
   // v2 (fleet) additions — optional for v1.5 single-robot sessions.
   subsystem?: string | null;
   source?: "agent" | "local";
+  // v2 P3.5.1: structured summary generated agent-side at save time.
+  // Null on sessions ingested before the summarizer existed (no backfill
+  // in this phase — those older rows stay summary-less in the list).
+  summary?: string | null;
 }
 
 export interface SessionListResult {
