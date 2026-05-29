@@ -242,6 +242,38 @@ class Db:
             cur = conn.execute(sql, params)
             return [SessionRow.from_row(r) for r in cur.fetchall()]
 
+    def list_past_sessions_with_summary(
+        self,
+        *,
+        before_started_at: int,
+        exclude_id: str,
+        limit: int = 5000,
+    ) -> list[SessionRow]:
+        """Past sessions (strictly older than `before_started_at`) that have
+        a non-null summary. Used by the v2 P3.5.2 similarity-search endpoint
+        to build the corpus for "Has this happened before?".
+
+        Strictly past — the query session and any later sessions are
+        excluded. `limit` is a backstop for very large fleets; the default
+        of 5000 keeps a single similarity query under ~100ms even with
+        pure-Python TF-IDF. Smarter shard/cache strategies are a v2.x
+        problem when a real fleet crosses that bar.
+        """
+        with self.connect() as conn:
+            cur = conn.execute(
+                """
+                SELECT * FROM sessions
+                WHERE started_at < ?
+                  AND id != ?
+                  AND summary IS NOT NULL
+                  AND length(summary) > 0
+                ORDER BY started_at DESC
+                LIMIT ?
+                """,
+                (before_started_at, exclude_id, limit),
+            )
+            return [SessionRow.from_row(r) for r in cur.fetchall()]
+
     def list_robot_ids(self) -> list[str]:
         with self.connect() as conn:
             cur = conn.execute(

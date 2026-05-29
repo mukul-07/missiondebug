@@ -61,6 +61,7 @@ from .routes.annotations import get_router as annotations_router
 from .routes.files import get_router as files_router
 from .routes.ingest import get_router as ingest_router
 from .routes.sessions import get_router as sessions_router
+from .routes.similarity import get_router as similarity_router
 from .scanner import scan_directory
 
 log = logging.getLogger(__name__)
@@ -216,6 +217,8 @@ def build_app(
     # v2 fleet endpoints — agents ingest sessions + post heartbeats.
     app.include_router(ingest_router(get_db))
     app.include_router(agents_router(get_db))
+    # v2 P3.5.2 — similarity search ("Has this happened before?").
+    app.include_router(similarity_router(get_db))
 
     @app.api_route(
         "/healthz",
