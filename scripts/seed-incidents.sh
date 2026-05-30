@@ -87,6 +87,18 @@ PY
   printf '  resolve %-8s %-13s -> HTTP %s\n' "$id" "$2" "$code"
 }
 
+heartbeat() {
+  # heartbeat <robot> — refresh last_heartbeat so the Agents page shows the
+  # robot as healthy rather than "silent / never heartbeated". Ingest alone
+  # registers the agent row but leaves last_heartbeat null.
+  local code
+  code="$(curl -s -o /dev/null -w '%{http_code}' "${AUTH[@]}" \
+      -X POST "${HUB}/api/v1/agents/heartbeat" \
+      -H 'content-type: application/json' \
+      --data-binary "{\"robot_id\":\"$1\",\"agent_version\":\"2.0.0\",\"buffer_size\":600}")"
+  printf '  heartbeat %-18s -> HTTP %s\n' "$1" "$code"
+}
+
 echo "Seeding incident corpus into ${HUB} ..."
 echo "Ingesting sessions:"
 
@@ -117,6 +129,12 @@ resolve SES-210 investigating "" "" ""
 resolve SES-220 resolved "Costmap inflation radius too large near racking; tuned per-aisle" "LINEAR-882" ""
 resolve SES-230 wont_fix "Known GPS multipath in aisle 7; operational workaround documented" "" ""
 # SES-211, SES-221, SES-240 intentionally left open.
+
+echo "Sending heartbeats (so the fleet shows healthy, not silent):"
+for r in warehouse-bot-01 warehouse-bot-02 warehouse-bot-03 \
+         warehouse-bot-05 warehouse-bot-07; do
+  heartbeat "$r"   # expect HTTP 204
+done
 
 echo
 echo "Done. Now open:"
