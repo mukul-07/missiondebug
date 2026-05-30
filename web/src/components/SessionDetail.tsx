@@ -214,6 +214,16 @@ export function SessionDetail() {
     [annotations],
   );
 
+  // At fleet scale the incident metadata outlives the raw MCAP: retention
+  // tiers recordings to cold storage or deletes them, agents go offline,
+  // S3 objects expire. "Metadata exists, bytes don't" is a NORMAL state,
+  // not an error — so when the recording can't be fetched and nothing
+  // decoded, we render a calm "recording unavailable" panel instead of a
+  // red error + a wall of empty players. The incident-memory surfaces
+  // (summary, similarity, resolution) stay fully visible — that's the
+  // durable value, and the whole pitch is that it survives the recording.
+  const recordingUnavailable = !!loaded.error && loaded.channels.length === 0;
+
   return (
     <div className="p-4 grid gap-3">
       <div className="flex items-baseline gap-3 flex-wrap">
@@ -242,7 +252,15 @@ export function SessionDetail() {
         ) : null}
         <span className="text-xs text-muted">
           {(Number(durationNs) / 1e9).toFixed(1)}s · {loaded.channels.length} channels ·{" "}
-          {loaded.error ? <span className="text-accent">err: {loaded.error}</span> : loaded.done ? "loaded" : "loading…"}
+          {recordingUnavailable ? (
+            "recording unavailable"
+          ) : loaded.error ? (
+            <span className="text-accent">err: {loaded.error}</span>
+          ) : loaded.done ? (
+            "loaded"
+          ) : (
+            "loading…"
+          )}
         </span>
       </div>
 
@@ -264,6 +282,23 @@ export function SessionDetail() {
 
       {id ? <ResolutionPanel sessionId={id} /> : null}
 
+      {recordingUnavailable ? (
+        <Card className="bg-bg/50">
+          <div className="text-[10px] uppercase tracking-wide text-muted mb-1">
+            Recording
+          </div>
+          <div className="text-sm text-text/80 leading-relaxed">
+            The recording for this incident is no longer available — it may
+            have been tiered to cold storage, removed by a retention policy,
+            or its reporting agent is offline.
+          </div>
+          <div className="text-xs text-muted mt-2">
+            The incident record above — summary, similar incidents, and
+            resolution — is preserved independently of the raw recording.
+          </div>
+        </Card>
+      ) : (
+      <>
       <div className="grid grid-cols-2 gap-3">
         {videoTopics.length > 0 ? (
           videoTopics.map((t) => (
@@ -357,6 +392,8 @@ export function SessionDetail() {
         </Button>
         <FoxgloveButton sessionId={id ?? ""} />
       </div>
+      </>
+      )}
 
       {meta?.topics && meta.topics.length > 0 ? (
         <TopicListExpander topics={meta.topics} />
