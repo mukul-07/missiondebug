@@ -223,11 +223,15 @@ export function FilterRail({
                       key={r}
                       type="button"
                       onClick={() => {
-                        if (g.key !== NO_SUBSYSTEM_KEY) {
-                          onSelectSubsystem(g.label);
-                        } else {
-                          onSelectSubsystem(null);
-                        }
+                        // Filter by robot id alone. A robot id is unique, so
+                        // the group's subsystem adds nothing — and worse, the
+                        // rail groups robots by their *agent heartbeat*
+                        // subsystem while the session list filters by each
+                        // session row's subsystem. When those disagree (e.g.
+                        // an agent reports "test-fleet" but its locally-saved
+                        // sessions have a null subsystem), also forcing the
+                        // subsystem filter here yields a dead-end empty list.
+                        onSelectSubsystem(null);
                         onSelectRobot(r);
                       }}
                       className={`ml-5 text-left px-2 py-0.5 rounded border ${

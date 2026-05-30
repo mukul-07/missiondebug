@@ -80,6 +80,7 @@ def save_now(
         robot_id=config.robot_id,
         topic_types=topic_types,
         label=label,
+        subsystem=config.hub.subsystem,
         **kw,
     )
     log.info(

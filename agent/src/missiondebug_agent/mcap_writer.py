@@ -31,6 +31,7 @@ class SessionMetadata:
     label: str | None
     path: str
     size_bytes: int
+    subsystem: str | None = None
 
 
 def _topic_type_map(topics_config) -> dict[str, str]:
@@ -138,6 +139,7 @@ def write_session(
     robot_id: str,
     topic_types: dict[str, str],
     label: str | None = None,
+    subsystem: str | None = None,
     schema_loader=_load_ros2_schema_text,
 ) -> SessionMetadata:
     """Write a session MCAP file. Returns its metadata.
@@ -166,6 +168,10 @@ def write_session(
             data={
                 "robot_id": robot_id,
                 "label": label or "",
+                # Free-form subsystem tag (HR23). Embedded here so locally
+                # saved sessions carry it onto the backend's session row via
+                # the directory scan — same value the hub-ingest path sends.
+                "subsystem": subsystem or "",
             },
         )
 
@@ -219,4 +225,5 @@ def write_session(
         label=label,
         path=str(output_path),
         size_bytes=size_bytes,
+        subsystem=subsystem,
     )

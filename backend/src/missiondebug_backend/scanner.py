@@ -49,6 +49,7 @@ def scan_directory(sessions_dir: Path, db: Db, robot_id_default: str = "robot-00
             mcap_size_bytes=meta.size_bytes,
             topics=meta.topics,
             created_at=now_ms(),
+            subsystem=meta.subsystem,
         )
         db.upsert_session(row)
         indexed += 1

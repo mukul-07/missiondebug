@@ -1,7 +1,8 @@
 """Extract minimal session metadata from an MCAP file.
 
 Reads the summary section for time/topic info, then iterates metadata
-records to find MissionDebug's `missiondebug` block (robot_id, label).
+records to find MissionDebug's `missiondebug` block (robot_id, label,
+subsystem).
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ class McapMeta:
     size_bytes: int
     robot_id: str | None
     label: str | None
+    subsystem: str | None
 
 
 def extract(path: Path) -> McapMeta:
@@ -40,6 +42,7 @@ def extract(path: Path) -> McapMeta:
 
         robot_id: str | None = None
         label: str | None = None
+        subsystem: str | None = None
         try:
             for record in reader.iter_metadata():
                 if record.name == "missiondebug":
@@ -47,6 +50,11 @@ def extract(path: Path) -> McapMeta:
                     lab = record.metadata.get("label")
                     if lab:
                         label = lab
+                    # Empty string means "no subsystem" — normalize to None
+                    # so the column stays NULL rather than "".
+                    sub = record.metadata.get("subsystem")
+                    if sub:
+                        subsystem = sub
         except Exception:
             # Older files written without metadata records — fine, fall back to filename.
             pass
@@ -61,4 +69,5 @@ def extract(path: Path) -> McapMeta:
         size_bytes=size,
         robot_id=robot_id,
         label=label,
+        subsystem=subsystem,
     )
