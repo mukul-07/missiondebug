@@ -330,6 +330,19 @@ class Db:
             )
             conn.commit()
 
+    def attach_mcap_path(self, session_id: str, mcap_path: str) -> None:
+        """Set mcap_path on an existing session without touching any other
+        column. The scanner uses this to make a hub-ingested session (which
+        carries summary/subsystem but no local bytes) servable from a local
+        file, without an INSERT OR REPLACE that would clobber those fields.
+        """
+        with self.connect() as conn:
+            conn.execute(
+                "UPDATE sessions SET mcap_path = ? WHERE id = ?",
+                (mcap_path, session_id),
+            )
+            conn.commit()
+
     def list_sessions(
         self,
         *,

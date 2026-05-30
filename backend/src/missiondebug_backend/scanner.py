@@ -23,13 +23,27 @@ def scan_directory(sessions_dir: Path, db: Db, robot_id_default: str = "robot-00
         path_str = str(mcap.resolve())
         if path_str in known:
             continue
+
+        stem = mcap.stem
+        # A row may already exist for this session id from a hub ingest,
+        # which stores summary/subsystem/mcap_url but leaves mcap_path
+        # empty (so it isn't in known_paths above). Re-inserting a
+        # scan-derived row would INSERT OR REPLACE over those richer
+        # fields and null out the summary. Instead, just attach the local
+        # file so the bytes become servable, and leave the hub data intact.
+        existing = db.get_session(stem)
+        if existing is not None:
+            if not existing.mcap_path:
+                db.attach_mcap_path(stem, path_str)
+                log.info("Attached local MCAP to hub-ingested session %s", stem)
+            continue
+
         try:
             meta = extract(mcap)
         except Exception:
             log.exception("Failed to extract metadata from %s", mcap)
             continue
 
-        stem = mcap.stem
         # Prefer robot_id from MCAP metadata; fall back to filename convention.
         if meta.robot_id:
             robot_id = meta.robot_id
