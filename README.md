@@ -8,11 +8,15 @@
 [![Quality Level 4](https://img.shields.io/badge/Quality-Level%204-yellow)](QUALITY_DECLARATION.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-> **MCAP-native incident replay for ROS 2 robots.** Capture the 60 seconds before a failure, then scrub it like a black box in Foxglove.
+> **Incident memory for your ROS 2 robot fleet.** Capture the 60 seconds around every failure, replay it like a black box in Foxglove — and query your whole fleet's incident history so your team stops re-solving the same problem.
 
-When a robot misbehaves, you want the 60 seconds *before* — what it was seeing, what it was commanding, what state it was in. MissionDebug runs alongside your ROS 2 stack, keeps a rolling buffer of the topics you care about, and writes a standard MCAP file the moment something goes wrong. Detectors fire automatically (stall, path deviation, low battery, topic dropout, or any rule you write in YAML). Open the web UI, click a session, scrub the timeline. Annotate the moment, share a deep-linked URL with a teammate.
+The deepest fleet-ops pain isn't "I can't find what broke" — it's *"we keep re-solving the same incident because nobody remembers it broke this way before."* MissionDebug fixes that. Every capture gets a structured summary; the fleet **incident dashboard** rolls up recurrence rate, MTTR, and top failure patterns; and opening any incident answers **"has this happened before?"** — surfacing similar past incidents *with how they were resolved*.
 
-Standards-native. Local-first. No cloud, no login, no proprietary format.
+![Fleet incident dashboard — recurrence rate, MTTR, estimated re-investigation time avoided, top recurring patterns, captures per robot](docs/screenshot-incidents.png)
+
+Under the hood it's a focused capture layer: an agent runs alongside your ROS 2 stack, keeps a rolling buffer of the topics you care about, and writes a standard MCAP the moment a detector fires — stall, path deviation, low battery, topic dropout, or any rule you write in YAML. Open the web UI, click a session, scrub the timeline. Annotate the moment, share a deep-linked URL with a teammate.
+
+Standards-native (MCAP + Foxglove). Local-first — self-hostable end to end, no mandatory cloud, no login, no proprietary format. Air-gap friendly: structured summaries and similarity search work fully offline.
 
 https://github.com/mukul-07/missiondebug/raw/main/docs/demo.mp4
 
@@ -26,6 +30,8 @@ https://github.com/mukul-07/missiondebug/raw/main/docs/demo.mp4
 | Continuous bag recorders | Keep the deep archive of high-volume topics (point clouds, costmaps). MissionDebug owns the focused, replay-ready layer for the topics engineers actually scrub during incidents. |
 
 MissionDebug is the **post-incident layer**. It's what you reach for *after* the alert fires.
+
+**Single robot or whole fleet.** Each agent works standalone — capture + replay on one robot, no hub required. Point agents at a central **hub** (Fleet Edition) and they sync their incident metadata into the fleet dashboard, similarity search, and resolution tracking shown above. The hub is self-hostable end to end and read-only on robots; recordings stay on the robot (or your S3 bucket) by default and never auto-upload. See [v2-SPEC.md](./v2-SPEC.md).
 
 ## Why this exists
 
@@ -41,7 +47,7 @@ Most ROS debugging tools assume you knew to start recording. MissionDebug always
 
 ## Try it without installing anything (60 seconds)
 
-No ROS install, no source checkout — just Docker. See [missiondebug-demos](https://github.com/mukul-07/missiondebug-demos): `git clone` → `docker compose up` → scrub the `sample_drive` fixture in your browser.
+No ROS install, no source checkout — just Docker. See [missiondebug-demos](https://github.com/mukul-07/missiondebug-demos): `git clone` → `docker compose up` → land on a populated **fleet incident dashboard** (pre-seeded with a sample incident history), then scrub the `sample_drive` fixture in your browser. It ships a [5-minute demo script](https://github.com/mukul-07/missiondebug-demos/blob/main/docs/DEMO-SCRIPT.md) for walking someone through it.
 
 ## Try it locally (5 minutes)
 
