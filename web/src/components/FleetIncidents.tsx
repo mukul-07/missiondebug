@@ -108,6 +108,11 @@ export function FleetIncidents() {
         </KpiTile>
       </div>
 
+      {/* Estimated value: recurrence -> re-investigation time avoided.
+          Turns the recurrence KPI into a budget justification. Assumptions
+          are editable so a prospect can plug in their own numbers live. */}
+      {data ? <ValueCard duplicates={data.recurrence.duplicates_marked} /> : null}
+
       {/* Captures trend */}
       <Card>
         <div className="text-[10px] uppercase tracking-wide text-muted mb-2">
@@ -187,6 +192,81 @@ export function FleetIncidents() {
 // ============================================================
 // Subcomponents
 // ============================================================
+
+function ValueCard({ duplicates }: { duplicates: number }) {
+  // Each operator-marked duplicate is an incident the team recognised as
+  // already-seen instead of re-investigating from scratch. duplicates ×
+  // hours-per-investigation = time avoided. Conservative on purpose: it
+  // counts only explicit duplicates, not similarity-suggested ones.
+  const [hoursPer, setHoursPer] = useState(4);
+  const [rate, setRate] = useState<number | "">("");
+  const hoursSaved = duplicates * hoursPer;
+  const dollars = typeof rate === "number" ? hoursSaved * rate : null;
+
+  return (
+    <Card>
+      <div className="text-[10px] uppercase tracking-wide text-muted mb-2">
+        Estimated value — repeat-incident time avoided
+      </div>
+      {duplicates === 0 ? (
+        <div className="text-xs text-muted">
+          No incidents marked as duplicates in this window yet. Once your team
+          recognises a repeat instead of re-investigating it, the time saved
+          shows up here.
+        </div>
+      ) : (
+        <div className="grid gap-3">
+          <div className="flex items-baseline gap-2 flex-wrap">
+            <span className="text-2xl font-mono text-accent">{hoursSaved}h</span>
+            <span className="text-sm text-muted">of re-investigation avoided</span>
+            {dollars !== null ? (
+              <span className="text-2xl font-mono text-accent ml-2">
+                ${dollars.toLocaleString()}
+              </span>
+            ) : null}
+          </div>
+          <div className="text-xs text-muted">
+            {duplicates} {duplicates === 1 ? "incident" : "incidents"} recognised
+            as a repeat this window — each one a re-investigation your team
+            didn't redo from scratch.
+          </div>
+          <div className="flex items-center gap-4 flex-wrap text-xs">
+            <label className="flex items-center gap-1.5 text-muted">
+              hrs / investigation
+              <input
+                type="number"
+                min={0}
+                step={0.5}
+                value={hoursPer}
+                onChange={(e) => setHoursPer(Math.max(0, Number(e.target.value) || 0))}
+                className="w-16 bg-bg border border-border rounded px-1.5 py-0.5 font-mono outline-none focus:border-accent"
+              />
+            </label>
+            <label className="flex items-center gap-1.5 text-muted">
+              $ / hr (optional)
+              <input
+                type="number"
+                min={0}
+                step={1}
+                value={rate}
+                placeholder="—"
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setRate(v === "" ? "" : Math.max(0, Number(v) || 0));
+                }}
+                className="w-20 bg-bg border border-border rounded px-1.5 py-0.5 font-mono outline-none focus:border-accent"
+              />
+            </label>
+          </div>
+          <div className="text-[10px] text-muted/70">
+            Counts operator-marked duplicates only — a deliberately conservative
+            floor. Adjust the assumptions to your team's numbers.
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
 
 function WindowSelector({
   value,
