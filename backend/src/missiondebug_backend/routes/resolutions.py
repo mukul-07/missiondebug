@@ -28,6 +28,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from ..db import RESOLUTION_STATUSES, Db, ResolutionRow
+from ..telemetry import Telemetry
+
+_TERMINAL_STATUSES = {"resolved", "duplicate", "wont_fix"}
 
 
 def _serialize(r: ResolutionRow) -> dict:
@@ -81,11 +84,12 @@ class ResolutionPayload(BaseModel):
     )
 
 
-def get_router(get_db) -> APIRouter:
+def get_router(get_db, telemetry: Telemetry | None = None) -> APIRouter:
     router = APIRouter(
         prefix="/api/v2/sessions",
         tags=["resolutions"],
     )
+    telemetry = telemetry or Telemetry()
 
     @router.get(
         "/{session_id}/resolution",
@@ -141,6 +145,12 @@ def get_router(get_db) -> APIRouter:
                     f"{payload.duplicate_of!r}",
                 )
 
+        # Capture the prior status BEFORE the upsert so we can detect the
+        # first transition into a terminal state (matches MTTR's
+        # time-to-first-resolution semantics — count each incident once).
+        prev = db.get_resolution(session_id)
+        was_terminal = prev is not None and prev.status in _TERMINAL_STATUSES
+
         row = db.upsert_resolution(
             session_id=session_id,
             status=payload.status,
@@ -149,6 +159,15 @@ def get_router(get_db) -> APIRouter:
             duplicate_of=payload.duplicate_of if payload.status == "duplicate" else None,
             edited_by=payload.edited_by,
         )
+
+        # v2 OTel — count an incident as "resolved" only on its first move
+        # into a terminal status. No-op unless export is configured.
+        if payload.status in _TERMINAL_STATUSES and not was_terminal:
+            try:
+                telemetry.record_resolution(status=payload.status)
+            except Exception:  # pragma: no cover - defensive
+                pass
+
         return _serialize(row)
 
     @router.delete(

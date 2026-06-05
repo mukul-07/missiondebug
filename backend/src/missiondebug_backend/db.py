@@ -5,10 +5,10 @@ from __future__ import annotations
 import json
 import sqlite3
 import time
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
@@ -123,7 +123,7 @@ class AnnotationRow:
     created_at: int
 
     @classmethod
-    def from_row(cls, r: sqlite3.Row) -> "AnnotationRow":
+    def from_row(cls, r: sqlite3.Row) -> AnnotationRow:
         return cls(
             id=r["id"],
             session_id=r["session_id"],
@@ -151,7 +151,7 @@ class SessionRow:
     summary: str | None = None
 
     @classmethod
-    def from_row(cls, r: sqlite3.Row) -> "SessionRow":
+    def from_row(cls, r: sqlite3.Row) -> SessionRow:
         keys = r.keys()
         return cls(
             id=r["id"],
@@ -180,7 +180,7 @@ class AgentRow:
     subsystem: str | None
 
     @classmethod
-    def from_row(cls, r: sqlite3.Row) -> "AgentRow":
+    def from_row(cls, r: sqlite3.Row) -> AgentRow:
         return cls(
             robot_id=r["robot_id"],
             first_seen=r["first_seen"],
@@ -210,7 +210,7 @@ class ResolutionRow:
     edited_at: int
 
     @classmethod
-    def from_row(cls, r: sqlite3.Row) -> "ResolutionRow":
+    def from_row(cls, r: sqlite3.Row) -> ResolutionRow:
         return cls(
             session_id=r["session_id"],
             status=r["status"],
@@ -223,7 +223,7 @@ class ResolutionRow:
         )
 
     @classmethod
-    def implicit_open(cls, session_id: str) -> "ResolutionRow":
+    def implicit_open(cls, session_id: str) -> ResolutionRow:
         """An untriaged session has no row; this is what we hand callers
         instead of None so the UI doesn't have to branch on null."""
         return cls(
@@ -255,7 +255,7 @@ class FleetSessionRow:
     res_duplicate_of: str | None
 
     @classmethod
-    def from_row(cls, r: sqlite3.Row) -> "FleetSessionRow":
+    def from_row(cls, r: sqlite3.Row) -> FleetSessionRow:
         return cls(
             id=r["id"],
             robot_id=r["robot_id"],
@@ -329,6 +329,16 @@ class Db:
                 ),
             )
             conn.commit()
+
+    def count_by_label(self, label: str) -> int:
+        """How many sessions share this label (e.g. 'anomaly:battery_low').
+        Used to annotate incident events with the fleet-wide occurrence count
+        ('3rd occurrence of this pattern'). Cheap COUNT, no join."""
+        with self.connect() as conn:
+            cur = conn.execute(
+                "SELECT COUNT(*) AS n FROM sessions WHERE label = ?", (label,)
+            )
+            return int(cur.fetchone()["n"])
 
     def attach_mcap_path(self, session_id: str, mcap_path: str) -> None:
         """Set mcap_path on an existing session without touching any other
@@ -409,7 +419,7 @@ class Db:
 
     # ---- annotations -------------------------------------------------
 
-    def insert_annotation(self, session_id: str, time_ns: int, body: str) -> "AnnotationRow":
+    def insert_annotation(self, session_id: str, time_ns: int, body: str) -> AnnotationRow:
         with self.connect() as conn:
             cur = conn.execute(
                 """
@@ -425,7 +435,7 @@ class Db:
             ).fetchone()
             return AnnotationRow.from_row(row)
 
-    def list_annotations(self, session_id: str) -> list["AnnotationRow"]:
+    def list_annotations(self, session_id: str) -> list[AnnotationRow]:
         with self.connect() as conn:
             cur = conn.execute(
                 "SELECT * FROM annotations WHERE session_id = ? ORDER BY time_ns ASC",
@@ -433,7 +443,7 @@ class Db:
             )
             return [AnnotationRow.from_row(r) for r in cur.fetchall()]
 
-    def update_annotation(self, annotation_id: int, body: str) -> "AnnotationRow | None":
+    def update_annotation(self, annotation_id: int, body: str) -> AnnotationRow | None:
         with self.connect() as conn:
             cur = conn.execute(
                 "UPDATE annotations SET body = ? WHERE id = ?",
@@ -652,7 +662,7 @@ class Db:
         *,
         started_at_gte: int,
         started_at_lt: int,
-    ) -> list["FleetSessionRow"]:
+    ) -> list[FleetSessionRow]:
         """Sessions started within `[started_at_gte, started_at_lt)` joined
         with their resolution status (if any). Powers the v2 P3.5.6b fleet
         stats endpoint — one query covers captures + resolution rollups

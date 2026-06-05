@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from ..db import Db, SessionRow, now_ms
+from ..telemetry import Telemetry, rule_from_label
 
 
 class SessionIngest(BaseModel):
@@ -57,8 +58,9 @@ class SessionIngestResponse(BaseModel):
     ingested: bool
 
 
-def get_router(get_db) -> APIRouter:
+def get_router(get_db, telemetry: Telemetry | None = None) -> APIRouter:
     router = APIRouter(prefix="/api/v1", tags=["ingest"])
+    telemetry = telemetry or Telemetry()
 
     @router.post(
         "/sessions/ingest",
@@ -99,6 +101,31 @@ def get_router(get_db) -> APIRouter:
             subsystem=payload.subsystem,
             summary=payload.summary,
         ))
+
+        # v2 OTel — opt-in export to the operator's observability stack.
+        # No-op unless MD_OTEL_ENDPOINT is configured. prior_occurrences is
+        # the fleet-wide count of this same pattern, minus this capture, so
+        # the alert can say "Nth occurrence". Telemetry must never break
+        # ingest, so failures are swallowed.
+        try:
+            rule = rule_from_label(payload.label)
+            telemetry.record_capture(
+                robot_id=payload.robot_id, subsystem=payload.subsystem, rule=rule
+            )
+            prior = (
+                max(0, db.count_by_label(payload.label) - 1) if payload.label else 0
+            )
+            telemetry.emit_incident(
+                session_id=payload.session_id,
+                robot_id=payload.robot_id,
+                subsystem=payload.subsystem,
+                rule=rule,
+                summary=payload.summary,
+                prior_occurrences=prior,
+            )
+        except Exception:  # pragma: no cover - defensive
+            pass
+
         return SessionIngestResponse(session_id=payload.session_id, ingested=True)
 
     return router

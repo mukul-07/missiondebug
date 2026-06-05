@@ -17,8 +17,9 @@ Content-Type: application/json
 That's it. Any alerter, watchdog, or monitoring tool that can fire an
 HTTP request can trigger a MissionDebug session.
 
-This document covers three concrete recipes. For the full API surface,
-see [`API.md`](./API.md).
+This document covers four concrete recipes — three that *trigger* captures,
+and one (OpenTelemetry) that *exports* incidents to your observability
+stack. For the full API surface, see [`API.md`](./API.md).
 
 ---
 
@@ -142,6 +143,71 @@ before?"* — replay, scrub, annotate. A team running both:
 - Doesn't have to choose between live diagnostics and post-incident
   forensics.
 - Uses each tool for what it's specifically designed for.
+
+---
+
+## 4. OpenTelemetry — export incidents to your observability stack (~5 minutes)
+
+Recipes 1–3 point *inbound* alerts at MissionDebug. This one goes the
+other way: the **hub** exports its incidents and KPIs *outbound* as
+standard OpenTelemetry, so they land in the Grafana / Datadog / on-call
+setup your team already runs. MissionDebug stops being a separate tab and
+becomes metrics + alerts inside your existing stack.
+
+**Where it runs:** the hub emits — never the robot. The hub sends to an
+OTLP collector *you* run on *your* network (Grafana Alloy, the OpenTelemetry
+Collector, a Datadog agent, …). Nothing goes to a MissionDebug cloud, and
+only incident *metadata* is exported (robot id, rule, subsystem, counts,
+deep-link) — never MCAP bytes, camera frames, or PII. Works fully
+air-gapped.
+
+### Setup
+
+Install the extra and point the hub at your collector:
+
+```bash
+pip install 'missiondebug-backend[otel]'
+
+# OTLP/HTTP base URL of your collector (the hub appends /v1/metrics and /v1/logs)
+export MD_OTEL_ENDPOINT=http://otel-collector:4318
+export MD_OTEL_HEADERS="authorization=Bearer <token>"   # optional
+export MD_OTEL_SERVICE_NAME=missiondebug                 # optional
+export MD_HUB_PUBLIC_URL=https://hub.internal:8000       # for deep-links in events
+```
+
+Leave `MD_OTEL_ENDPOINT` unset and nothing is emitted — standalone /
+air-gapped installs are unaffected (no extra dependency loads).
+
+### What you get
+
+**Metrics** (for Grafana panels + your own alert rules):
+
+| Metric | Type | Meaning |
+|---|---|---|
+| `missiondebug.incidents.captured` | counter | incidents captured (attrs: robot_id, subsystem, rule) |
+| `missiondebug.incidents.resolved` | counter | first transition to a terminal status (attr: status) |
+| `missiondebug.agents.reporting` / `.total` | gauge | fleet operational health |
+| `missiondebug.incidents.open` | gauge | open + investigating, last 30 days |
+| `missiondebug.recurrence.rate` | gauge | fraction marked duplicate, last 30 days |
+| `missiondebug.mttr.days` | gauge | mean time to first resolution, last 30 days |
+
+**Events** (logs) — one structured record per captured incident, with a
+deep-link back to the session and a "Nth occurrence of this pattern" hint.
+Route these to Slack / PagerDuty with your collector's existing pipeline,
+e.g. a message like:
+
+```
+WARN  Incident on warehouse-bot-03: battery_low — 3rd occurrence of this pattern.
+      Auto-triggered by rule 'battery_low' … (subsystem: power).
+      url=https://hub.internal:8000/sessions/SES-203
+```
+
+### Why this over a per-vendor webhook
+
+It's vendor-neutral: the same export feeds Grafana, Datadog, Honeycomb,
+and your alert routing without MissionDebug shipping (and you maintaining)
+a connector per tool. Your on-call sees the robot incident the same way it
+sees everything else — with the replay one click away.
 
 ---
 

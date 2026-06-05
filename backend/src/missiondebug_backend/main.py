@@ -55,16 +55,18 @@ class SpaStaticFiles(StaticFiles):
             return FileResponse(index)
 
 from .db import Db
-from .retention import run_periodic as run_retention, sweep_once
+from .retention import run_periodic as run_retention
+from .retention import sweep_once
 from .routes.agents import get_router as agents_router
 from .routes.annotations import get_router as annotations_router
 from .routes.files import get_router as files_router
-from .routes.ingest import get_router as ingest_router
 from .routes.fleet_stats import get_router as fleet_stats_router
+from .routes.ingest import get_router as ingest_router
 from .routes.resolutions import get_router as resolutions_router
 from .routes.sessions import get_router as sessions_router
 from .routes.similarity import get_router as similarity_router
 from .scanner import scan_directory
+from .telemetry import Telemetry, build_telemetry
 
 log = logging.getLogger(__name__)
 
@@ -84,8 +86,13 @@ def build_app(
     max_disk_mb: int = 0,
     web_dir: Path | None = None,
     auth_config: AuthConfig | None = None,
+    telemetry: Telemetry | None = None,
 ) -> FastAPI:
     db = Db(db_path)
+    # v2 OTel — opt-in export to the operator's observability stack. No-op
+    # unless MD_OTEL_ENDPOINT is set (and the [otel] extra installed), so
+    # standalone / air-gapped installs are unaffected. Tests inject their own.
+    telemetry = telemetry if telemetry is not None else build_telemetry(db)
     # Auth config — caller is expected to have already validated startup
     # invariants in main(). Defaulting here keeps existing test callers
     # (which pass no auth_config) seeing v1.5 open-routes behaviour.
@@ -117,7 +124,7 @@ def build_app(
                 try:
                     await asyncio.wait_for(stop.wait(), timeout=RESCAN_INTERVAL_S)
                     return  # stop fired — exit
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     pass
                 try:
                     n = await asyncio.to_thread(scan_all)
@@ -148,6 +155,8 @@ def build_app(
                     await t
                 except (asyncio.CancelledError, Exception):
                     pass
+            # Flush + shut down OTel exporters (no-op when disabled).
+            await asyncio.to_thread(telemetry.shutdown)
 
     app = FastAPI(
         title="MissionDebug Backend",
@@ -217,12 +226,12 @@ def build_app(
     app.include_router(files_router(get_db))
     app.include_router(annotations_router(get_db))
     # v2 fleet endpoints — agents ingest sessions + post heartbeats.
-    app.include_router(ingest_router(get_db))
+    app.include_router(ingest_router(get_db, telemetry))
     app.include_router(agents_router(get_db))
     # v2 P3.5.2 — similarity search ("Has this happened before?").
     app.include_router(similarity_router(get_db))
     # v2 P3.5.6 — per-session resolution records (status + root cause).
-    app.include_router(resolutions_router(get_db))
+    app.include_router(resolutions_router(get_db, telemetry))
     # v2 P3.5.6b — fleet incident dashboard rollup (captures, MTTR,
     # resolution rate, recurrence, top patterns).
     app.include_router(fleet_stats_router(get_db))
