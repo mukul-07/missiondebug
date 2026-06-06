@@ -1,3 +1,7 @@
+# MissionDebug Enterprise Edition — Commercial License, NOT MIT.
+# Part of the paid Fleet/Enterprise tiers. Source is visible for evaluation and
+# audit; commercial/production use requires a paid license + key. See ee/LICENSE
+# and LICENSING.md. Copyright (c) 2026 MissionDebug. All rights reserved.
 """Webhook alerting for the hub (v2 Phase 6) — opt-in, self-hosted.
 
 When a robot captures an incident, the hub can POST a notification to the

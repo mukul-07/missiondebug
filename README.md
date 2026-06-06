@@ -6,7 +6,7 @@
 [![ROS 2: Humble | Jazzy](https://img.shields.io/badge/ROS%202-Humble%20%7C%20Jazzy-blue)](https://docs.ros.org/)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 [![Quality Level 4](https://img.shields.io/badge/Quality-Level%204-yellow)](QUALITY_DECLARATION.md)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: Open-core (MIT + Commercial)](https://img.shields.io/badge/License-Open--core%20(MIT%20%2B%20Commercial)-blue.svg)](LICENSING.md)
 
 > **Incident memory for your ROS 2 robot fleet.** Capture the 60 seconds around every failure, replay it like a black box in Foxglove — and query your whole fleet's incident history so your team stops re-solving the same problem.
 
@@ -286,4 +286,15 @@ make test                    # 87 tests across agent + backend, ~1s
 
 ## License
 
-MIT — see [LICENSE](./LICENSE).
+MissionDebug is **open-core**:
+
+- **Everything except `ee/` is MIT** — see [LICENSE](./LICENSE). This is the
+  free Community tier (capture, replay, incident dashboard, similarity,
+  resolutions, OpenTelemetry export, BYO-key AI agent, hub core). Free forever,
+  commercial use included.
+- **The `ee/` directories are proprietary** (MissionDebug Commercial License) —
+  the paid Fleet / Enterprise features (alerting, lifecycle, and future
+  SSO/RBAC + cross-fleet network). Source-visible for evaluation, but
+  production/commercial use needs a paid license.
+
+Full details: [LICENSING.md](./LICENSING.md).

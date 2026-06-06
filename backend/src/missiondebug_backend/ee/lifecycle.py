@@ -1,3 +1,7 @@
+# MissionDebug Enterprise Edition — Commercial License, NOT MIT.
+# Part of the paid Fleet/Enterprise tiers. Source is visible for evaluation and
+# audit; commercial/production use requires a paid license + key. See ee/LICENSE
+# and LICENSING.md. Copyright (c) 2026 MissionDebug. All rights reserved.
 """Lifecycle policies (v2 Phase 5b).
 
 Age-based recording lifecycle, complementing the size-based disk cap in
@@ -33,7 +37,7 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 
-from .db import Db, now_ms
+from ..db import Db, now_ms
 
 log = logging.getLogger(__name__)
 

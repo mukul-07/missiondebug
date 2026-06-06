@@ -7,7 +7,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from missiondebug_backend.db import Db, SessionRow, now_ms
-from missiondebug_backend.lifecycle import sweep_lifecycle_once
+from missiondebug_backend.ee.lifecycle import sweep_lifecycle_once
 from missiondebug_backend.main import _env_int, build_app
 
 _DAY_MS = 86_400_000

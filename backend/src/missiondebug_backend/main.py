@@ -54,11 +54,11 @@ class SpaStaticFiles(StaticFiles):
             index = Path(self.directory) / "index.html"
             return FileResponse(index)
 
-from .alerting import AlertEvent, Alerter, build_alerter
 from .db import Db
+from .ee.alerting import Alerter, AlertEvent, build_alerter
+from .ee.lifecycle import run_periodic as run_lifecycle
+from .ee.lifecycle import sweep_lifecycle_once
 from .incident_agent import IncidentAgent, build_incident_agent
-from .lifecycle import run_periodic as run_lifecycle
-from .lifecycle import sweep_lifecycle_once
 from .retention import run_periodic as run_retention
 from .retention import sweep_once
 from .routes.agents import get_router as agents_router

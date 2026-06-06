@@ -1,3 +1,10 @@
+SCOPE: This MIT License applies to all of MissionDebug EXCEPT files inside any
+"ee/" directory (and files marked "MissionDebug Enterprise Edition"), which are
+licensed separately under the MissionDebug Commercial License — see
+ee/LICENSE and LICENSING.md. The MIT terms below do not apply to those files.
+
+----------------------------------------------------------------------
+
 MIT License
 
 Copyright (c) 2026 Mukul

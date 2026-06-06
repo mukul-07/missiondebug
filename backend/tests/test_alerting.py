@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from missiondebug_backend.alerting import (
+from missiondebug_backend.ee.alerting import (
     AlertConfig,
     Alerter,
     AlertEvent,

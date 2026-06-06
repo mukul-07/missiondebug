@@ -1,0 +1,58 @@
+MissionDebug Commercial License
+
+⚠️  TEMPLATE NOTICE: This is a starting-point license, not legal advice.
+    Have a qualified lawyer review and adapt it for your jurisdiction before
+    relying on it to sell. (See LICENSING.md.)
+
+Copyright (c) 2026 MissionDebug. All rights reserved.
+
+This license governs the contents of this "ee/" directory and any other files
+expressly marked as part of the MissionDebug Enterprise Edition (collectively,
+the "Enterprise Software"). The remainder of the MissionDebug repository is
+licensed separately under the MIT License (see the repository's root LICENSE
+file). This Commercial License does NOT apply to those MIT-licensed files, and
+the MIT License does NOT apply to the Enterprise Software.
+
+1. SOURCE-AVAILABLE, NOT OPEN SOURCE.
+   The source code of the Enterprise Software is made visible so that you may
+   read, evaluate, and audit it. Visibility grants no right to use it except
+   as expressly permitted below.
+
+2. EVALUATION USE.
+   You may install and run the Enterprise Software solely for evaluation,
+   testing, and development in a non-production environment, without charge.
+
+3. PRODUCTION / COMMERCIAL USE REQUIRES A PAID LICENSE.
+   Any use of the Enterprise Software in production, or for any commercial or
+   revenue-generating purpose, requires a valid paid license from MissionDebug
+   and a valid license key. Use beyond the scope of your license (for example,
+   on more robots than your license permits) is not authorized.
+
+4. RESTRICTIONS. Except as expressly permitted by a paid license, you may not:
+   (a) use the Enterprise Software in production or for commercial purposes;
+   (b) remove, disable, or circumvent any license-key check or usage measurement;
+   (c) redistribute, sublicense, sell, rent, or host the Enterprise Software
+       for the benefit of third parties;
+   (d) remove or alter any copyright, license, or attribution notices.
+
+5. OWNERSHIP.
+   MissionDebug retains all right, title, and interest in and to the Enterprise
+   Software. No rights are granted except those expressly stated here.
+
+6. NO WARRANTY.
+   THE ENTERPRISE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+   EXPRESS OR IMPLIED. IT IS NOT A SAFETY SYSTEM AND MUST NOT BE RELIED UPON
+   FOR THE SAFE OPERATION OF ROBOTS OR ANY OTHER EQUIPMENT.
+
+7. LIMITATION OF LIABILITY.
+   TO THE MAXIMUM EXTENT PERMITTED BY LAW, MISSIONDEBUG SHALL NOT BE LIABLE FOR
+   ANY INDIRECT, INCIDENTAL, SPECIAL, OR CONSEQUENTIAL DAMAGES, OR FOR ANY LOSS
+   OF PROFITS, DATA, OR EQUIPMENT, ARISING FROM OR RELATED TO THE ENTERPRISE
+   SOFTWARE.
+
+8. TERMINATION.
+   This license terminates automatically if you breach it. On termination you
+   must cease all use of the Enterprise Software and delete all copies
+   (evaluation copies included).
+
+To obtain a paid license, contact: sales@missiondebug.example  (update this).
