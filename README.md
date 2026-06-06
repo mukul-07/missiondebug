@@ -188,6 +188,22 @@ curl -s -X POST http://localhost:8000/api/admin/sweep
 # {"deleted_ids": [...], "bytes_freed": ..., "bytes_after": ..., "cap_bytes": ...}
 ```
 
+**Age-based lifecycle (fleet).** Beyond the size cap, two opt-in age
+policies (both default off):
+
+```bash
+# Release the recording bytes after N days but KEEP the incident record —
+# the session still shows in the dashboard / similarity / resolution; the
+# replay UI shows a calm "recording tiered" card. Incident memory outlives
+# the recording.
+export MD_COLD_AFTER_DAYS=30
+# Purge the whole session (row + file) after N days.
+export MD_DELETE_AFTER_DAYS=90
+
+curl -s -X POST http://localhost:8000/api/admin/lifecycle/sweep
+# {"cooled_ids": [...], "deleted_ids": [...], "cold_after_days": 30, "delete_after_days": 90}
+```
+
 ### 6. Useful daily commands
 
 ```bash

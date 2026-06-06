@@ -17,9 +17,12 @@ Content-Type: application/json
 That's it. Any alerter, watchdog, or monitoring tool that can fire an
 HTTP request can trigger a MissionDebug session.
 
-This document covers four concrete recipes — three that *trigger* captures,
-and one (OpenTelemetry) that *exports* incidents to your observability
-stack. For the full API surface, see [`API.md`](./API.md).
+This document covers several concrete recipes: three that *trigger*
+captures, one (OpenTelemetry) that *exports* incidents to your
+observability stack, one that *notifies* on-call directly (Slack /
+PagerDuty / webhook), and one that *answers questions* about the incident
+history in plain English. For the full API surface, see
+[`API.md`](./API.md).
 
 ---
 
@@ -211,7 +214,62 @@ sees everything else — with the replay one click away.
 
 ---
 
-## 5. Natural-language incident agent (~2 minutes, opt-in)
+## 5. Native alerting — notify on-call on every capture (~2 minutes, opt-in)
+
+Recipe 4 routes incidents *through* a collector. If you just want a
+message in Slack or a PagerDuty page the moment a robot captures an
+incident — no collector to run — the hub posts directly. Configure one or
+more destinations (hub-side; the robot is uninvolved):
+
+```bash
+export MD_ALERT_SLACK_WEBHOOK=https://hooks.slack.com/services/T.../B.../xxx
+export MD_ALERT_PAGERDUTY_ROUTING_KEY=R0...              # Events API v2
+export MD_ALERT_WEBHOOK_URL=https://example.com/hook     # generic JSON POST
+export MD_ALERT_COOLDOWN_S=300                           # optional; per (rule, robot)
+export MD_HUB_PUBLIC_URL=https://missiondebug.your-fleet # for the deep-link back
+```
+
+Leave them all unset and nothing is emitted — standalone / air-gapped
+installs are unaffected (Hard Rule 18). The destinations are *your* Slack
+workspace and *your* PagerDuty — there is no MissionDebug cloud in the path
+(Hard Rule 20).
+
+**What goes out** (Hard Rule 26 — metadata only, never MCAP bytes /
+frames / PII): rule name, robot id, subsystem, a one-line summary, the
+occurrence count ("3rd occurrence"), and a deep-link to the session. A
+Slack message looks like:
+
+```
+🚨 MissionDebug incident — `battery_low` on bot-7 (power) — 3rd occurrence.
+battery_low on bot-7 across /battery_state
+View in MissionDebug
+```
+
+**Delivery** is best-effort and non-blocking: dispatched on a background
+thread so a slow webhook never delays the agent's ingest. Each destination
+is attempted independently — one failing doesn't stop the others. A
+per-`(rule, robot)` cooldown collapses a flapping detector into at most one
+alert per window (PagerDuty also de-dupes on a stable key).
+
+**Verify your config** without waiting for a real detector:
+
+```bash
+curl -X POST http://localhost:8000/api/admin/alerts/test
+# -> {"enabled": true, "deliveries": [{"destination":"slack","ok":true,"detail":"200"}]}
+```
+
+### Native alerting vs. OpenTelemetry (recipe 4)
+
+Both send incidents outward; pick by what you already run. **Native
+alerting** is the shortest path to a human ("page me now") and needs no
+infrastructure. **OpenTelemetry** is the right call when you already have a
+collector and want incidents to live alongside the rest of your metrics in
+Grafana/Datadog with your existing alert routing. They compose — many
+fleets run both.
+
+---
+
+## 6. Natural-language incident agent (~2 minutes, opt-in)
 
 Ask the fleet's incident history in plain English instead of clicking
 around — *"why does warehouse-bot-03 keep stalling, and what fixed it last
