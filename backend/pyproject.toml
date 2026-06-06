@@ -21,6 +21,8 @@ dev = [
   # Installed in dev so the OTel export path is exercised by tests.
   "opentelemetry-sdk>=1.42",
   "opentelemetry-exporter-otlp-proto-http>=1.42",
+  # Installed in dev so the license-key engine is exercised by tests.
+  "cryptography>=42",
 ]
 # Opt-in OpenTelemetry export (metrics + incident events to an OTLP
 # collector). Not pulled by the base install — `pip install
@@ -29,6 +31,13 @@ dev = [
 otel = [
   "opentelemetry-sdk>=1.42",
   "opentelemetry-exporter-otlp-proto-http>=1.42",
+]
+# Opt-in license-key verification for the paid Fleet/Enterprise (`ee/`)
+# features. Not pulled by the base/free install — `pip install
+# 'missiondebug-backend[license]'` on the hub that runs paid features.
+# Without it, paid features stay off (the free MIT core is unaffected).
+license = [
+  "cryptography>=42",
 ]
 
 [project.scripts]
