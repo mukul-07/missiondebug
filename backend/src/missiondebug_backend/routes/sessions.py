@@ -22,6 +22,11 @@ def get_router(get_db) -> APIRouter:
             # v2 fields (optional; null for v1.5 single-robot sessions):
             "subsystem": row.subsystem,
             "summary": row.summary,
+            # v2 P5b: when set, the recording was tiered out by a lifecycle
+            # policy — bytes gone, incident metadata kept. The replay UI shows
+            # the "recording unavailable (tiered)" card; the dashboard is
+            # unaffected.
+            "cold_at": row.cold_at,
             # source: "agent" means this came in via P1.2 ingest (hub-ingested
             # session); "local" means the backend itself wrote the MCAP file.
             "source": "agent" if row.mcap_url else "local",

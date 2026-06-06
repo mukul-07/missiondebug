@@ -288,9 +288,22 @@ export function SessionDetail() {
             Recording
           </div>
           <div className="text-sm text-text/80 leading-relaxed">
-            The recording for this incident is no longer available — it may
-            have been tiered to cold storage, removed by a retention policy,
-            or its reporting agent is offline.
+            {meta?.cold_at ? (
+              <>
+                The recording for this incident was tiered out by a lifecycle
+                policy on{" "}
+                <span className="text-text">
+                  {new Date(meta.cold_at).toLocaleDateString()}
+                </span>{" "}
+                — the bytes are released, the incident record is kept.
+              </>
+            ) : (
+              <>
+                The recording for this incident is no longer available — it may
+                have been tiered to cold storage, removed by a retention policy,
+                or its reporting agent is offline.
+              </>
+            )}
           </div>
           <div className="text-xs text-muted mt-2">
             The incident record above — summary, similar incidents, and

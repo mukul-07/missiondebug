@@ -16,6 +16,10 @@ export interface SessionSummary {
   // Null on sessions ingested before the summarizer existed (no backfill
   // in this phase — those older rows stay summary-less in the list).
   summary?: string | null;
+  // v2 P5b: unix ms the recording was tiered out by a lifecycle policy
+  // (bytes released, incident metadata kept). Null = recording still
+  // available (or never had a policy applied).
+  cold_at?: number | null;
 }
 
 export interface SessionListResult {

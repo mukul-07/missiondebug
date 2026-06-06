@@ -56,6 +56,8 @@ class SpaStaticFiles(StaticFiles):
 
 from .db import Db
 from .incident_agent import IncidentAgent, build_incident_agent
+from .lifecycle import run_periodic as run_lifecycle
+from .lifecycle import sweep_lifecycle_once
 from .retention import run_periodic as run_retention
 from .retention import sweep_once
 from .routes.agents import get_router as agents_router
@@ -80,12 +82,18 @@ RESCAN_INTERVAL_S = 5.0
 # (one SUM query) so frequent ticks are fine.
 RETENTION_INTERVAL_S = 30.0
 
+# How often to apply age-based lifecycle policies (cold/delete). Age-based,
+# so nothing here is latency-sensitive — hourly is plenty.
+LIFECYCLE_INTERVAL_S = 3600.0
+
 
 def build_app(
     sessions_dir: Path,
     db_path: Path,
     fixtures_dir: Path | None = None,
     max_disk_mb: int = 0,
+    cold_after_days: int = 0,
+    delete_after_days: int = 0,
     web_dir: Path | None = None,
     auth_config: AuthConfig | None = None,
     telemetry: Telemetry | None = None,
@@ -154,11 +162,31 @@ def build_app(
                 name="periodic_retention",
             )
             log.info("Disk retention enabled: cap %d MB", max_disk_mb)
+
+        # v2 P5b — age-based lifecycle (cold-tier + delete). Opt-in; only
+        # scheduled when at least one policy is configured.
+        lifecycle_task: asyncio.Task | None = None
+        if cold_after_days > 0 or delete_after_days > 0:
+            lifecycle_task = asyncio.create_task(
+                run_lifecycle(
+                    db,
+                    cold_after_days=cold_after_days,
+                    delete_after_days=delete_after_days,
+                    interval_s=LIFECYCLE_INTERVAL_S,
+                    stop=stop,
+                ),
+                name="periodic_lifecycle",
+            )
+            log.info(
+                "Lifecycle policies enabled: cold_after=%s delete_after=%s (days)",
+                cold_after_days or "off",
+                delete_after_days or "off",
+            )
         try:
             yield
         finally:
             stop.set()
-            for t in (rescan_task, retention_task):
+            for t in (rescan_task, retention_task, lifecycle_task):
                 if t is None:
                     continue
                 t.cancel()
@@ -281,6 +309,10 @@ def build_app(
             "cap_mb": max_disk_mb,
             "cap_enabled": cap_bytes > 0,
             "session_count": len(db.list_sessions(limit=10**9)),
+            # v2 P5b lifecycle policy state (0 = disabled).
+            "cold_after_days": cold_after_days,
+            "delete_after_days": delete_after_days,
+            "lifecycle_enabled": cold_after_days > 0 or delete_after_days > 0,
         }
 
     @app.post("/api/admin/sweep", tags=["admin"], summary="Force a retention sweep")
@@ -292,6 +324,27 @@ def build_app(
             "bytes_freed": result.bytes_freed,
             "bytes_after": result.bytes_after,
             "cap_bytes": result.cap_bytes,
+        }
+
+    @app.post(
+        "/api/admin/lifecycle/sweep",
+        tags=["admin"],
+        summary="Force an age-based lifecycle sweep (cold-tier + delete)",
+    )
+    def lifecycle_sweep():
+        """Apply the configured `cold_after_days` / `delete_after_days`
+        policies immediately. Normally runs hourly. No-op for disabled
+        policies."""
+        result = sweep_lifecycle_once(
+            db,
+            cold_after_days=cold_after_days,
+            delete_after_days=delete_after_days,
+        )
+        return {
+            "cooled_ids": result.cooled_ids,
+            "deleted_ids": result.deleted_ids,
+            "cold_after_days": result.cold_after_days,
+            "delete_after_days": result.delete_after_days,
         }
 
     # Mount the web UI's static dist if provided. Done last so it doesn't
@@ -330,6 +383,21 @@ def main() -> None:
         help="Cap on total MCAP bytes; oldest sessions deleted when over. 0 = disabled.",
     )
     parser.add_argument(
+        "--cold-after-days",
+        type=int,
+        default=int(os.environ.get("MD_COLD_AFTER_DAYS", "0")),
+        help=(
+            "Release MCAP bytes for sessions older than N days, keeping the "
+            "incident metadata (the 'recording unavailable' state). 0 = disabled."
+        ),
+    )
+    parser.add_argument(
+        "--delete-after-days",
+        type=int,
+        default=int(os.environ.get("MD_DELETE_AFTER_DAYS", "0")),
+        help="Purge sessions (row + file) older than N days. 0 = disabled.",
+    )
+    parser.add_argument(
         "--web-dir",
         default=os.environ.get("MD_WEB_DIR", ""),
         help="Directory of the built web UI to serve at /. Empty = don't serve UI.",
@@ -350,6 +418,8 @@ def main() -> None:
         Path(args.db),
         fixtures_dir=fixtures,
         max_disk_mb=args.max_disk_mb,
+        cold_after_days=args.cold_after_days,
+        delete_after_days=args.delete_after_days,
         web_dir=Path(args.web_dir) if args.web_dir else None,
         auth_config=auth_cfg,
     )

@@ -29,7 +29,14 @@ CREATE TABLE IF NOT EXISTS sessions (
   -- v2 P3.5.1: structured summary computed agent-side at save time.
   -- Deterministic, immutable once written (Hard Rule 27). Null on
   -- pre-P3.5 sessions ingested before this column existed.
-  summary TEXT
+  summary TEXT,
+  -- v2 P5b lifecycle: when set, this session has been "cooled" — the MCAP
+  -- bytes were released (local file unlinked, mcap_url/mcap_path cleared)
+  -- but the incident metadata (summary, resolution, similarity) is kept.
+  -- The UI renders the "recording unavailable" card; the dashboard is
+  -- unaffected. NULL = recording still available. This separation is the
+  -- pitch: incident memory outlives the recording.
+  cold_at INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_started_at
   ON sessions(started_at DESC);
@@ -111,6 +118,7 @@ _V2_COLUMN_ADDS = [
     ("sessions", "mcap_url", "TEXT"),
     ("sessions", "subsystem", "TEXT"),
     ("sessions", "summary", "TEXT"),
+    ("sessions", "cold_at", "INTEGER"),
 ]
 
 
@@ -149,6 +157,7 @@ class SessionRow:
     mcap_url: str | None = None
     subsystem: str | None = None
     summary: str | None = None
+    cold_at: int | None = None  # v2 P5b — set when MCAP bytes were tiered out
 
     @classmethod
     def from_row(cls, r: sqlite3.Row) -> SessionRow:
@@ -167,6 +176,7 @@ class SessionRow:
             mcap_url=r["mcap_url"] if "mcap_url" in keys else None,
             subsystem=r["subsystem"] if "subsystem" in keys else None,
             summary=r["summary"] if "summary" in keys else None,
+            cold_at=r["cold_at"] if "cold_at" in keys else None,
         )
 
 
@@ -318,14 +328,15 @@ class Db:
                 INSERT OR REPLACE INTO sessions
                   (id, robot_id, started_at, ended_at, duration_ms, label,
                    mcap_path, mcap_size_bytes, topics_json, created_at,
-                   mcap_url, subsystem, summary)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   mcap_url, subsystem, summary, cold_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     row.id, row.robot_id, row.started_at, row.ended_at,
                     row.duration_ms, row.label, row.mcap_path,
                     row.mcap_size_bytes, json.dumps(row.topics),
                     row.created_at, row.mcap_url, row.subsystem, row.summary,
+                    row.cold_at,
                 ),
             )
             conn.commit()
@@ -704,6 +715,55 @@ class Db:
     def delete_session(self, session_id: str) -> bool:
         with self.connect() as conn:
             cur = conn.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
+            conn.commit()
+            return cur.rowcount > 0
+
+    # ---- v2 P5b lifecycle -------------------------------------------
+
+    def list_delete_candidates(self, *, cutoff_ms: int, limit: int) -> list[SessionRow]:
+        """Sessions started strictly before `cutoff_ms`, oldest first. The
+        lifecycle sweeper purges these (row + local file) when a
+        `delete_after_days` policy is configured."""
+        with self.connect() as conn:
+            cur = conn.execute(
+                "SELECT * FROM sessions WHERE started_at < ? "
+                "ORDER BY started_at ASC LIMIT ?",
+                (cutoff_ms, limit),
+            )
+            return [SessionRow.from_row(r) for r in cur.fetchall()]
+
+    def list_cold_candidates(self, *, cutoff_ms: int, limit: int) -> list[SessionRow]:
+        """Sessions started before `cutoff_ms` that still hold recording bytes
+        (a local path or a fetch URL) and have not been cooled yet. The
+        sweeper tiers these out — releasing the bytes but keeping the row."""
+        with self.connect() as conn:
+            cur = conn.execute(
+                """
+                SELECT * FROM sessions
+                WHERE started_at < ?
+                  AND cold_at IS NULL
+                  AND (
+                    (mcap_path IS NOT NULL AND mcap_path != '')
+                    OR (mcap_url IS NOT NULL AND mcap_url != '')
+                  )
+                ORDER BY started_at ASC
+                LIMIT ?
+                """,
+                (cutoff_ms, limit),
+            )
+            return [SessionRow.from_row(r) for r in cur.fetchall()]
+
+    def mark_cold(self, session_id: str, *, cold_at: int) -> bool:
+        """Tier a session's recording out: stamp cold_at and clear the byte
+        pointers (mcap_path + mcap_url) so the hub stops offering the
+        recording. The incident metadata (summary, resolution, similarity)
+        is untouched. The caller unlinks any local file. Idempotent."""
+        with self.connect() as conn:
+            cur = conn.execute(
+                "UPDATE sessions SET cold_at = ?, mcap_path = '', mcap_url = NULL "
+                "WHERE id = ?",
+                (cold_at, session_id),
+            )
             conn.commit()
             return cur.rowcount > 0
 
