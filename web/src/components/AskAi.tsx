@@ -25,7 +25,7 @@ export function AskAi() {
         type="button"
         onClick={() => setOpen(true)}
         title="Ask the incident history in plain English"
-        className="text-xs flex items-center gap-1 rounded border border-accent/60 text-accent px-2 py-0.5 hover:bg-accent/10"
+        className="flex items-center gap-1 text-accent hover:opacity-80"
       >
         <span aria-hidden>✨</span> Ask AI
       </button>

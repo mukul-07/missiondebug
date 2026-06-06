@@ -41,9 +41,9 @@ export default function App() {
           >
             Agents
           </NavLink>
+          <AskAi />
         </nav>
         <div className="ml-auto flex items-center gap-2">
-          <AskAi />
           <span
             className="text-[10px] text-muted border border-border rounded px-1.5 py-0.5"
             title="Press cmd+K (or ctrl+K) to jump"
