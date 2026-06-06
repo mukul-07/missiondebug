@@ -131,7 +131,11 @@ def build_app(
                 try:
                     await asyncio.wait_for(stop.wait(), timeout=RESCAN_INTERVAL_S)
                     return  # stop fired — exit
-                except TimeoutError:
+                # NOTE: asyncio.TimeoutError, NOT the builtin TimeoutError —
+                # they are distinct classes on Python 3.10 (the project's
+                # floor), only merged in 3.11. Catching the builtin here let
+                # the timeout propagate and killed the rescan loop on 3.10.
+                except asyncio.TimeoutError:
                     pass
                 try:
                     n = await asyncio.to_thread(scan_all)
