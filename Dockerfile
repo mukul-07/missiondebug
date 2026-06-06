@@ -31,12 +31,13 @@ FROM python:3.11-slim AS runtime
 WORKDIR /app
 
 # Install backend from local source. Copy manifests first for layer caching.
-# Include the [otel] extra so the image can export to an OpenTelemetry
-# collector when MD_OTEL_ENDPOINT is set — still opt-in at runtime, just
-# batteries-included in the published image. ~10MB, no effect when unset.
+# Include the [otel] + [license] extras so the image can export to an
+# OpenTelemetry collector (MD_OTEL_ENDPOINT) and verify paid-tier license keys
+# (MD_LICENSE_KEY) when those are set — both still opt-in at runtime, just
+# batteries-included in the published image. No effect when unset.
 COPY backend/pyproject.toml /app/backend/
 COPY backend/src /app/backend/src
-RUN pip install --no-cache-dir "/app/backend[otel]"
+RUN pip install --no-cache-dir "/app/backend[otel,license]"
 
 # Bring in the built web bundle from stage 1.
 COPY --from=web-builder /repo/web/dist /web
