@@ -13,6 +13,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
+from ..alerting import Alerter, AlertEvent
 from ..db import Db, SessionRow, now_ms
 from ..telemetry import Telemetry, rule_from_label
 
@@ -58,9 +59,12 @@ class SessionIngestResponse(BaseModel):
     ingested: bool
 
 
-def get_router(get_db, telemetry: Telemetry | None = None) -> APIRouter:
+def get_router(
+    get_db, telemetry: Telemetry | None = None, alerter: Alerter | None = None
+) -> APIRouter:
     router = APIRouter(prefix="/api/v1", tags=["ingest"])
     telemetry = telemetry or Telemetry()
+    alerter = alerter or Alerter()
 
     @router.post(
         "/sessions/ingest",
@@ -123,6 +127,17 @@ def get_router(get_db, telemetry: Telemetry | None = None) -> APIRouter:
                 summary=payload.summary,
                 prior_occurrences=prior,
             )
+            # v2 P6 — fire webhook alerts (Slack / PagerDuty / generic).
+            # No-op unless a destination is configured. Dispatched on a
+            # daemon thread so a slow webhook never delays the ingest reply.
+            alerter.alert_capture_in_background(AlertEvent(
+                session_id=payload.session_id,
+                robot_id=payload.robot_id,
+                subsystem=payload.subsystem,
+                rule=rule,
+                summary=payload.summary,
+                prior_occurrences=prior,
+            ))
         except Exception:  # pragma: no cover - defensive
             pass
 

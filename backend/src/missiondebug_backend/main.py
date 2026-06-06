@@ -54,6 +54,7 @@ class SpaStaticFiles(StaticFiles):
             index = Path(self.directory) / "index.html"
             return FileResponse(index)
 
+from .alerting import AlertEvent, Alerter, build_alerter
 from .db import Db
 from .incident_agent import IncidentAgent, build_incident_agent
 from .lifecycle import run_periodic as run_lifecycle
@@ -98,6 +99,7 @@ def build_app(
     auth_config: AuthConfig | None = None,
     telemetry: Telemetry | None = None,
     incident_agent: IncidentAgent | None = None,
+    alerter: Alerter | None = None,
 ) -> FastAPI:
     db = Db(db_path)
     # v2 OTel — opt-in export to the operator's observability stack. No-op
@@ -108,6 +110,10 @@ def build_app(
     # Opt-in: inert unless an LLM key (MD_LLM_API_KEY) is configured. Tests
     # inject one with a scripted model.
     incident_agent = incident_agent if incident_agent is not None else build_incident_agent(db)
+    # v2 P6 alerting — webhook notifications on capture. No-op unless a
+    # destination (Slack / PagerDuty / generic) is configured. Tests inject
+    # one with a recording post_fn.
+    alerter = alerter if alerter is not None else build_alerter()
     # Auth config — caller is expected to have already validated startup
     # invariants in main(). Defaulting here keeps existing test callers
     # (which pass no auth_config) seeing v1.5 open-routes behaviour.
@@ -265,7 +271,7 @@ def build_app(
     app.include_router(files_router(get_db))
     app.include_router(annotations_router(get_db))
     # v2 fleet endpoints — agents ingest sessions + post heartbeats.
-    app.include_router(ingest_router(get_db, telemetry))
+    app.include_router(ingest_router(get_db, telemetry, alerter))
     app.include_router(agents_router(get_db))
     # v2 P3.5.2 — similarity search ("Has this happened before?").
     app.include_router(similarity_router(get_db))
@@ -324,6 +330,41 @@ def build_app(
             "bytes_freed": result.bytes_freed,
             "bytes_after": result.bytes_after,
             "cap_bytes": result.cap_bytes,
+        }
+
+    @app.get(
+        "/api/admin/alerts",
+        tags=["admin"],
+        summary="Alerting status (which webhook destinations are configured)",
+    )
+    def alerts_status():
+        return {"enabled": alerter.enabled}
+
+    @app.post(
+        "/api/admin/alerts/test",
+        tags=["admin"],
+        summary="Send a synthetic test alert to the configured destinations",
+    )
+    def alerts_test():
+        """Fire a test incident alert so operators can verify their Slack /
+        PagerDuty / webhook config without waiting for a real detector.
+        Returns per-destination delivery results. Synchronous (unlike the
+        ingest path) so the caller sees whether delivery succeeded."""
+        event = AlertEvent(
+            session_id="test-alert",
+            robot_id="test-robot",
+            subsystem="diagnostics",
+            rule="alert_test",
+            summary="This is a MissionDebug test alert. If you see it, alerting works.",
+            prior_occurrences=0,
+        )
+        deliveries = alerter.alert_capture(event)
+        return {
+            "enabled": alerter.enabled,
+            "deliveries": [
+                {"destination": d.destination, "ok": d.ok, "detail": d.detail}
+                for d in deliveries
+            ],
         }
 
     @app.post(
