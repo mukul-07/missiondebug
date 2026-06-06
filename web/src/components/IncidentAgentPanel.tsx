@@ -11,6 +11,7 @@ import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { askAgent, getAgentStatus, type AgentAnswer } from "../api/agent";
+import { AgentMarkdown } from "./AgentMarkdown";
 import { Card } from "./ui/Card";
 
 const EXAMPLES = [
@@ -113,8 +114,8 @@ function Answer({ data }: { data: AgentAnswer }) {
   }
   return (
     <div className="grid gap-2 border-t border-border pt-3">
-      <div className="text-sm text-text leading-relaxed whitespace-pre-wrap">
-        {data.answer}
+      <div className="max-h-[28rem] overflow-y-auto pr-1">
+        <AgentMarkdown text={data.answer} citations={data.citations} />
       </div>
       {data.citations.length > 0 ? (
         <div className="flex items-center gap-1.5 flex-wrap">
