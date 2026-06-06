@@ -367,8 +367,18 @@ def build_app(
     def license_status():
         """Whether a valid paid license is installed and what it unlocks
         (customer, robot limit, features, expiry, id). All-empty / licensed:
-        false means the free Community tier."""
-        return license.status()
+        false means the free Community tier.
+
+        Also reports over-deployment: `robots_active` (robots reporting to
+        this hub) vs the licensed `robots` cap. Computed locally — no
+        phone-home — so it works for air-gapped fleets too (Hard Rule 24)."""
+        status = license.status()
+        active = len(db.list_agents())
+        status["robots_active"] = active
+        status["over_limit"] = bool(
+            license.valid and license.robots > 0 and active > license.robots
+        )
+        return status
 
     @app.get(
         "/api/admin/alerts",

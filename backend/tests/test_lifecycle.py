@@ -248,3 +248,19 @@ def test_license_status_unlicensed_by_default(tmp_path):
         st = client.get("/api/admin/license").json()
         assert st["licensed"] is False
         assert st["features"] == []
+
+
+def test_license_status_flags_over_deployment(tmp_path):
+    """3 robots reporting on a 2-robot license → over_limit (computed
+    locally, no phone-home — air-gap-friendly)."""
+    db_path = tmp_path / "db.sqlite3"
+    lic = License(customer="t", robots=2, features=frozenset({"alerting"}),
+                  expires_at=None, license_id="t", valid=True)
+    app = build_app(tmp_path / "s", db_path, license=lic)
+    db = Db(db_path)
+    for r in ("bot-1", "bot-2", "bot-3"):
+        db.upsert_agent(robot_id=r)
+    with TestClient(app) as client:
+        st = client.get("/api/admin/license").json()
+        assert st["robots_active"] == 3
+        assert st["over_limit"] is True

@@ -7,6 +7,7 @@ import {
   getFleetHealth,
 } from "../api/agents";
 import { EmptyState } from "./ui/EmptyState";
+import { LicenseBadge } from "./LicenseBadge";
 import { Skeleton } from "./ui/Skeleton";
 
 /**
@@ -113,8 +114,9 @@ export function AgentHealth() {
         <h2 className="text-lg">Fleet health</h2>
         <span className="text-sm">{summary}</span>
         {subtle ? <span className="text-sm text-muted">· {subtle}</span> : null}
+        <span className="ml-auto"><LicenseBadge /></span>
         <span
-          className="ml-auto text-[10px] text-muted"
+          className="text-[10px] text-muted"
           title={`healthy if heartbeat < ${data.thresholds.healthy_seconds}s ago; stale up to ${data.thresholds.stale_seconds}s; silent beyond`}
         >
           thresholds: healthy &lt; {data.thresholds.healthy_seconds}s
