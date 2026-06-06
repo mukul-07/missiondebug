@@ -100,6 +100,20 @@ def test_disabled_without_key(tmp_path: Path, monkeypatch):
     assert "disabled" in out["answer"].lower()
 
 
+def test_status_reports_model_when_enabled(tmp_path: Path):
+    cfg = LLMConfig(provider="openai", api_key="sk-test", model="gpt-4o-mini")
+    agent = IncidentAgent(Db(tmp_path / "db.sqlite3"), config=cfg)
+    st = agent.status()
+    assert st == {"enabled": True, "provider": "openai", "model": "gpt-4o-mini"}
+
+
+def test_status_hides_config_when_disabled(tmp_path: Path, monkeypatch):
+    monkeypatch.delenv("MD_LLM_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    agent = IncidentAgent(Db(tmp_path / "db.sqlite3"))
+    assert agent.status() == {"enabled": False, "provider": None, "model": None}
+
+
 def test_tools_return_bounded_metadata(tmp_path: Path):
     db = Db(tmp_path / "db.sqlite3")
     _seed(db)

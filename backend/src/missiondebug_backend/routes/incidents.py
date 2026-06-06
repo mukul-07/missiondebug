@@ -25,7 +25,7 @@ def get_router(incident_agent: IncidentAgent) -> APIRouter:
 
     @router.get("/agent", summary="Whether the natural-language agent is enabled")
     def agent_status() -> dict:
-        return {"enabled": incident_agent.enabled}
+        return incident_agent.status()
 
     @router.post("/ask", summary="Ask the fleet's incident history a question")
     def ask(req: AskRequest) -> dict:

@@ -405,6 +405,20 @@ class IncidentAgent:
     def enabled(self) -> bool:
         return bool(self._config.api_key) or self._has_custom_model
 
+    def status(self) -> dict:
+        """Whether the agent is on, and (when on) which model answers. Lets
+        the UI show "powered by <model>" — the visible difference between a
+        managed deployment (MissionDebug-hosted model) and a BYO-key one.
+        Provider/model are omitted when disabled so nothing config-shaped
+        leaks from an un-provisioned hub."""
+        if not self.enabled:
+            return {"enabled": False, "provider": None, "model": None}
+        return {
+            "enabled": True,
+            "provider": self._config.provider,
+            "model": self._config.model or None,
+        }
+
     def ask(self, question: str) -> dict:
         if not self.enabled:
             return {

@@ -13,7 +13,15 @@ export interface AgentAnswer {
   error?: boolean;
 }
 
-export async function getAgentStatus(): Promise<{ enabled: boolean }> {
+export interface AgentStatus {
+  enabled: boolean;
+  // Present when enabled: which model answers. Lets the panel show
+  // "powered by <model>" — the visible mark of a managed deployment.
+  provider?: string | null;
+  model?: string | null;
+}
+
+export async function getAgentStatus(): Promise<AgentStatus> {
   const r = await fetch("/api/v2/incidents/agent");
   if (!r.ok) throw new Error(`getAgentStatus: ${r.status}`);
   return r.json();

@@ -40,8 +40,15 @@ export function IncidentAgentPanel() {
 
   return (
     <Card>
-      <div className="text-[10px] uppercase tracking-wide text-muted mb-2">
-        Ask the incident history
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-[10px] uppercase tracking-wide text-muted">
+          Ask the incident history
+        </div>
+        {enabled && status?.model ? (
+          <div className="text-[10px] text-muted/70" title="The model answering your questions">
+            powered by {status.model}
+          </div>
+        ) : null}
       </div>
 
       {status && !enabled ? (
