@@ -4,6 +4,7 @@ import { SessionDetail } from "./components/SessionDetail";
 import { AgentHealth } from "./components/AgentHealth";
 import { FleetIncidents } from "./components/FleetIncidents";
 import { CommandPalette } from "./components/CommandPalette";
+import { AskAi } from "./components/AskAi";
 import { ErrorBoundary } from "./components/ui/ErrorBoundary";
 import { ThemeToggle } from "./components/ui/ThemeToggle";
 
@@ -42,6 +43,7 @@ export default function App() {
           </NavLink>
         </nav>
         <div className="ml-auto flex items-center gap-2">
+          <AskAi />
           <span
             className="text-[10px] text-muted border border-border rounded px-1.5 py-0.5"
             title="Press cmd+K (or ctrl+K) to jump"

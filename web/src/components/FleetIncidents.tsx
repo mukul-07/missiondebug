@@ -32,7 +32,6 @@ import {
   type TopPattern,
 } from "../api/fleet";
 import { Card } from "./ui/Card";
-import { IncidentAgentPanel } from "./IncidentAgentPanel";
 import { Skeleton } from "./ui/Skeleton";
 
 const WINDOW_OPTIONS = [
@@ -113,9 +112,6 @@ export function FleetIncidents() {
           Turns the recurrence KPI into a budget justification. Assumptions
           are editable so a prospect can plug in their own numbers live. */}
       {data ? <ValueCard duplicates={data.recurrence.duplicates_marked} /> : null}
-
-      {/* v2 incident agent — ask the incident history in plain English. */}
-      <IncidentAgentPanel />
 
       {/* Captures trend */}
       <Card>
