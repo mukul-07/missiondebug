@@ -55,12 +55,14 @@ class SpaStaticFiles(StaticFiles):
             return FileResponse(index)
 
 from .db import Db
+from .incident_agent import IncidentAgent, build_incident_agent
 from .retention import run_periodic as run_retention
 from .retention import sweep_once
 from .routes.agents import get_router as agents_router
 from .routes.annotations import get_router as annotations_router
 from .routes.files import get_router as files_router
 from .routes.fleet_stats import get_router as fleet_stats_router
+from .routes.incidents import get_router as incidents_router
 from .routes.ingest import get_router as ingest_router
 from .routes.resolutions import get_router as resolutions_router
 from .routes.sessions import get_router as sessions_router
@@ -87,12 +89,17 @@ def build_app(
     web_dir: Path | None = None,
     auth_config: AuthConfig | None = None,
     telemetry: Telemetry | None = None,
+    incident_agent: IncidentAgent | None = None,
 ) -> FastAPI:
     db = Db(db_path)
     # v2 OTel — opt-in export to the operator's observability stack. No-op
     # unless MD_OTEL_ENDPOINT is set (and the [otel] extra installed), so
     # standalone / air-gapped installs are unaffected. Tests inject their own.
     telemetry = telemetry if telemetry is not None else build_telemetry(db)
+    # v2 incident agent — natural-language Q&A over the incident history.
+    # Opt-in: inert unless an LLM key (MD_LLM_API_KEY) is configured. Tests
+    # inject one with a scripted model.
+    incident_agent = incident_agent if incident_agent is not None else build_incident_agent(db)
     # Auth config — caller is expected to have already validated startup
     # invariants in main(). Defaulting here keeps existing test callers
     # (which pass no auth_config) seeing v1.5 open-routes behaviour.
@@ -235,6 +242,8 @@ def build_app(
     # v2 P3.5.6b — fleet incident dashboard rollup (captures, MTTR,
     # resolution rate, recurrence, top patterns).
     app.include_router(fleet_stats_router(get_db))
+    # v2 incident agent — POST /api/v2/incidents/ask
+    app.include_router(incidents_router(incident_agent))
 
     @app.api_route(
         "/healthz",

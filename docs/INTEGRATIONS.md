@@ -211,6 +211,39 @@ sees everything else — with the replay one click away.
 
 ---
 
+## 5. Natural-language incident agent (~2 minutes, opt-in)
+
+Ask the fleet's incident history in plain English instead of clicking
+around — *"why does warehouse-bot-03 keep stalling, and what fixed it last
+time?"* The hub runs an LLM agent with read-only tools over the incident
+corpus (search / detail / similarity / fleet-stats) and answers with
+grounded, session-id-cited responses.
+
+**Enable it** (hub-side; the robot is uninvolved):
+
+```bash
+export MD_LLM_API_KEY=sk-ant-...      # your own key (BYO-LLM)
+export MD_LLM_MODEL=claude-sonnet-4-6 # optional, this is the default
+# air-gapped? point at a local / proxied model instead of the cloud:
+export MD_LLM_BASE_URL=http://your-local-llm:8080
+```
+
+Leave `MD_LLM_API_KEY` unset and the agent reports `enabled: false` — every
+other surface (dashboard, similarity, summaries) keeps working offline.
+
+```
+POST /api/v2/incidents/ask  { "question": "..." }
+  -> { enabled, answer, citations: [session_id...], tools_used: [...] }
+GET  /api/v2/incidents/agent  -> { enabled }
+```
+
+**What leaves the hub:** only incident *metadata* (ids, rule, subsystem,
+timestamps, summary text, resolution text, counts) — never MCAP bytes,
+camera frames, or PII. Use a local model (`MD_LLM_BASE_URL`) to keep
+everything on-prem.
+
+---
+
 ## Custom integrations
 
 If you've wired MissionDebug into something not listed here — Sentry,
