@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 
 from missiondebug_backend.db import Db, SessionRow, now_ms
 from missiondebug_backend.lifecycle import sweep_lifecycle_once
-from missiondebug_backend.main import build_app
+from missiondebug_backend.main import _env_int, build_app
 
 _DAY_MS = 86_400_000
 
@@ -46,6 +46,22 @@ def _mk_session(
         summary=summary,
     ))
     return p
+
+
+def test_env_int_tolerates_empty_and_garbage(monkeypatch):
+    """Regression: compose passes `"${VAR:-}"` as an empty string, which
+    crashed startup via int(""). _env_int must treat unset / empty /
+    whitespace / non-numeric all as the default."""
+    monkeypatch.delenv("MD_COLD_AFTER_DAYS", raising=False)
+    assert _env_int("MD_COLD_AFTER_DAYS") == 0          # unset
+    monkeypatch.setenv("MD_COLD_AFTER_DAYS", "")
+    assert _env_int("MD_COLD_AFTER_DAYS") == 0          # empty (the crash case)
+    monkeypatch.setenv("MD_COLD_AFTER_DAYS", "   ")
+    assert _env_int("MD_COLD_AFTER_DAYS") == 0          # whitespace
+    monkeypatch.setenv("MD_COLD_AFTER_DAYS", "not-a-number")
+    assert _env_int("MD_COLD_AFTER_DAYS") == 0          # garbage -> default, no raise
+    monkeypatch.setenv("MD_COLD_AFTER_DAYS", "30")
+    assert _env_int("MD_COLD_AFTER_DAYS") == 30         # valid
 
 
 def test_cold_releases_bytes_but_keeps_metadata(tmp_path):

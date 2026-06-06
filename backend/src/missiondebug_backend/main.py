@@ -88,6 +88,21 @@ RETENTION_INTERVAL_S = 30.0
 LIFECYCLE_INTERVAL_S = 3600.0
 
 
+def _env_int(name: str, default: int = 0) -> int:
+    """Read an int from the environment, treating unset OR empty/whitespace
+    as the default. Compose passes `"${VAR:-}"` as an empty string (the key
+    exists), so a bare `int(os.environ.get(name, "0"))` would choke on `""`
+    and crash startup — this is the robust form."""
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        log.warning("Ignoring non-integer %s=%r; using %d", name, raw, default)
+        return default
+
+
 def build_app(
     sessions_dir: Path,
     db_path: Path,
@@ -420,13 +435,13 @@ def main() -> None:
     parser.add_argument(
         "--max-disk-mb",
         type=int,
-        default=int(os.environ.get("MD_MAX_DISK_MB", "0")),
+        default=_env_int("MD_MAX_DISK_MB"),
         help="Cap on total MCAP bytes; oldest sessions deleted when over. 0 = disabled.",
     )
     parser.add_argument(
         "--cold-after-days",
         type=int,
-        default=int(os.environ.get("MD_COLD_AFTER_DAYS", "0")),
+        default=_env_int("MD_COLD_AFTER_DAYS"),
         help=(
             "Release MCAP bytes for sessions older than N days, keeping the "
             "incident metadata (the 'recording unavailable' state). 0 = disabled."
@@ -435,7 +450,7 @@ def main() -> None:
     parser.add_argument(
         "--delete-after-days",
         type=int,
-        default=int(os.environ.get("MD_DELETE_AFTER_DAYS", "0")),
+        default=_env_int("MD_DELETE_AFTER_DAYS"),
         help="Purge sessions (row + file) older than N days. 0 = disabled.",
     )
     parser.add_argument(
