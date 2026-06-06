@@ -222,11 +222,18 @@ grounded, session-id-cited responses.
 **Enable it** (hub-side; the robot is uninvolved):
 
 ```bash
-export MD_LLM_API_KEY=sk-ant-...      # your own key (BYO-LLM)
-export MD_LLM_MODEL=claude-sonnet-4-6 # optional, this is the default
-# air-gapped? point at a local / proxied model instead of the cloud:
-export MD_LLM_BASE_URL=http://your-local-llm:8080
+export MD_LLM_API_KEY=sk-ant-...      # Anthropic, or sk-... for OpenAI (auto-detected)
+export MD_LLM_MODEL=...                # optional; defaults per provider
+# air-gapped? point at a local / OpenAI-compatible model (Ollama, vLLM, …):
+export MD_LLM_PROVIDER=openai
+export MD_LLM_BASE_URL=http://your-local-llm:8080/v1
 ```
+
+**Provider:** Anthropic and OpenAI-compatible are both supported. The key
+prefix is sniffed automatically (`sk-ant-` → Anthropic, other `sk-` →
+OpenAI); set `MD_LLM_PROVIDER=anthropic|openai` to be explicit. Because
+OpenAI-compatible is also what local model servers speak, the same path
+runs fully on-prem for air-gapped sites.
 
 Leave `MD_LLM_API_KEY` unset and the agent reports `enabled: false` — every
 other surface (dashboard, similarity, summaries) keeps working offline.

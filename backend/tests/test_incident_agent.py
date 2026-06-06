@@ -10,7 +10,12 @@ from fastapi.testclient import TestClient
 
 from missiondebug_backend.db import Db, SessionRow, now_ms
 from missiondebug_backend.incident_agent import (
+    _TOOLS,
     IncidentAgent,
+    LLMConfig,
+    _from_openai_response,
+    _to_openai_messages,
+    _to_openai_tools,
     tool_get_incident,
     tool_search_incidents,
 )
@@ -119,3 +124,73 @@ def test_ask_endpoint(tmp_path: Path):
         r = client.post("/api/v2/incidents/ask", json={"question": "hello"})
         assert r.status_code == 200
         assert r.json()["answer"] == "No matches."
+
+
+def test_provider_autodetect(monkeypatch):
+    for var in ("MD_LLM_PROVIDER", "MD_LLM_MODEL", "MD_LLM_BASE_URL",
+                "ANTHROPIC_API_KEY", "OPENAI_API_KEY"):
+        monkeypatch.delenv(var, raising=False)
+
+    monkeypatch.setenv("MD_LLM_API_KEY", "sk-ant-abc")
+    a = LLMConfig.from_env()
+    assert a.provider == "anthropic" and "anthropic.com" in a.base_url
+    assert a.model.startswith("claude")
+
+    monkeypatch.setenv("MD_LLM_API_KEY", "sk-proj-xyz")  # OpenAI-style key
+    o = LLMConfig.from_env()
+    assert o.provider == "openai" and "openai.com" in o.base_url
+    assert o.model.startswith("gpt")
+
+    # Explicit provider + local base URL (the air-gap path) wins.
+    monkeypatch.setenv("MD_LLM_PROVIDER", "openai")
+    monkeypatch.setenv("MD_LLM_BASE_URL", "http://local-llm:8080")
+    monkeypatch.setenv("MD_LLM_API_KEY", "anything")
+    local = LLMConfig.from_env()
+    assert local.provider == "openai" and local.base_url == "http://local-llm:8080"
+
+
+def test_openai_translation_roundtrip():
+    # tools: anthropic input_schema -> openai function.parameters
+    otools = _to_openai_tools(_TOOLS)
+    assert otools[0]["type"] == "function"
+    assert otools[0]["function"]["name"] == "search_incidents"
+    assert otools[0]["function"]["parameters"]["type"] == "object"
+
+    # messages: a tool round trip -> system + user + assistant(tool_calls) + tool
+    omsgs = _to_openai_messages(
+        "SYS",
+        [
+            {"role": "user", "content": "q"},
+            {"role": "assistant", "content": [
+                {"type": "tool_use", "id": "t1", "name": "find_similar",
+                 "input": {"session_id": "SES-1"}},
+            ]},
+            {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": "t1", "content": "{}"},
+            ]},
+        ],
+    )
+    assert omsgs[0] == {"role": "system", "content": "SYS"}
+    assistant = next(m for m in omsgs if m["role"] == "assistant")
+    assert assistant["tool_calls"][0]["function"]["name"] == "find_similar"
+    tool_msg = next(m for m in omsgs if m["role"] == "tool")
+    assert tool_msg["tool_call_id"] == "t1"
+
+    # response: openai tool_calls -> anthropic tool_use shape (loop-compatible)
+    tu = _from_openai_response({"choices": [{
+        "finish_reason": "tool_calls",
+        "message": {"content": None, "tool_calls": [
+            {"id": "c1", "function": {"name": "find_similar",
+                                      "arguments": '{"session_id": "SES-9"}'}},
+        ]},
+    }]})
+    assert tu["stop_reason"] == "tool_use"
+    block = next(b for b in tu["content"] if b["type"] == "tool_use")
+    assert block["name"] == "find_similar" and block["input"]["session_id"] == "SES-9"
+
+    # response: a plain answer -> end_turn text
+    fin = _from_openai_response({"choices": [{
+        "finish_reason": "stop", "message": {"content": "the answer"},
+    }]})
+    assert fin["stop_reason"] == "end_turn"
+    assert fin["content"][0]["text"] == "the answer"

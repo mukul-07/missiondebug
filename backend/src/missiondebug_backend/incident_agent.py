@@ -33,11 +33,17 @@ from .telemetry import rule_from_label
 
 log = logging.getLogger(__name__)
 
-_DEFAULT_MODEL = "claude-sonnet-4-6"
-_DEFAULT_BASE_URL = "https://api.anthropic.com"
 _ANTHROPIC_VERSION = "2023-06-01"
 _MAX_TOOL_ROUNDS = 6
 _MAX_TOKENS = 1024
+
+# Provider-specific defaults. OpenAI-compatible covers OpenAI itself plus
+# local servers (Ollama, vLLM, LM Studio) — so it doubles as the air-gap path.
+_DEFAULT_MODELS = {"anthropic": "claude-sonnet-4-6", "openai": "gpt-4o-mini"}
+_DEFAULT_BASE_URLS = {
+    "anthropic": "https://api.anthropic.com",
+    "openai": "https://api.openai.com",
+}
 
 _SYSTEM_PROMPT = (
     "You are MissionDebug's fleet incident-history assistant. Answer the "
@@ -51,9 +57,10 @@ _SYSTEM_PROMPT = (
 
 @dataclass
 class LLMConfig:
+    provider: str = "anthropic"  # "anthropic" | "openai" (openai = OpenAI-compatible)
     api_key: str | None = None
-    model: str = _DEFAULT_MODEL
-    base_url: str = _DEFAULT_BASE_URL
+    model: str = ""
+    base_url: str = ""
     extra_headers: dict[str, str] = field(default_factory=dict)
 
     @classmethod
@@ -61,15 +68,26 @@ class LLMConfig:
         api_key = (
             os.environ.get("MD_LLM_API_KEY")
             or os.environ.get("ANTHROPIC_API_KEY")
+            or os.environ.get("OPENAI_API_KEY")
             or None
         )
-        return cls(
-            api_key=api_key,
-            model=os.environ.get("MD_LLM_MODEL", "").strip() or _DEFAULT_MODEL,
-            base_url=(
-                os.environ.get("MD_LLM_BASE_URL", "").strip() or _DEFAULT_BASE_URL
-            ).rstrip("/"),
+        # Explicit MD_LLM_PROVIDER wins; otherwise sniff the key prefix
+        # ("sk-ant-" = Anthropic, any other "sk-" = OpenAI-compatible).
+        provider = os.environ.get("MD_LLM_PROVIDER", "").strip().lower()
+        if provider not in ("anthropic", "openai"):
+            if api_key and api_key.startswith("sk-ant-"):
+                provider = "anthropic"
+            elif api_key and api_key.startswith("sk-"):
+                provider = "openai"
+            else:
+                provider = "anthropic"
+        model = (
+            os.environ.get("MD_LLM_MODEL", "").strip() or _DEFAULT_MODELS[provider]
         )
+        base_url = (
+            os.environ.get("MD_LLM_BASE_URL", "").strip() or _DEFAULT_BASE_URLS[provider]
+        ).rstrip("/")
+        return cls(provider=provider, api_key=api_key, model=model, base_url=base_url)
 
 
 # ---- tools (read-only, metadata-only) ----------------------------------
@@ -228,8 +246,15 @@ _DISPATCH = {
 
 
 def _default_call_model(config: LLMConfig, system: str, messages: list, tools: list) -> dict:
-    """POST to the Anthropic Messages API over httpx. base_url is configurable
-    so the same path works against a local / proxied model."""
+    """Dispatch to the configured provider. The agent loop is Anthropic-shaped;
+    the OpenAI adapter translates at its boundary so the loop stays unchanged.
+    `base_url` is configurable so either path works against a local model."""
+    if config.provider == "openai":
+        return _openai_call(config, system, messages, tools)
+    return _anthropic_call(config, system, messages, tools)
+
+
+def _anthropic_call(config: LLMConfig, system: str, messages: list, tools: list) -> dict:
     import httpx
 
     headers = {
@@ -250,6 +275,111 @@ def _default_call_model(config: LLMConfig, system: str, messages: list, tools: l
     )
     resp.raise_for_status()
     return resp.json()
+
+
+def _openai_call(config: LLMConfig, system: str, messages: list, tools: list) -> dict:
+    import httpx
+
+    headers = {
+        "authorization": f"Bearer {config.api_key or ''}",
+        "content-type": "application/json",
+        **config.extra_headers,
+    }
+    body = {
+        "model": config.model,
+        "max_tokens": _MAX_TOKENS,
+        "messages": _to_openai_messages(system, messages),
+        "tools": _to_openai_tools(tools),
+    }
+    resp = httpx.post(
+        config.base_url + "/v1/chat/completions",
+        headers=headers,
+        json=body,
+        timeout=60.0,
+    )
+    resp.raise_for_status()
+    return _from_openai_response(resp.json())
+
+
+# ---- OpenAI <-> Anthropic translation (keeps the loop provider-agnostic) ----
+
+def _to_openai_tools(tools: list) -> list:
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": t["name"],
+                "description": t["description"],
+                "parameters": t["input_schema"],
+            },
+        }
+        for t in tools
+    ]
+
+
+def _to_openai_messages(system: str, messages: list) -> list:
+    out: list = [{"role": "system", "content": system}]
+    for m in messages:
+        role, content = m["role"], m["content"]
+        if isinstance(content, str):
+            out.append({"role": role, "content": content})
+            continue
+        if role == "assistant":
+            text = "".join(b["text"] for b in content if b.get("type") == "text")
+            tool_calls = [
+                {
+                    "id": b["id"],
+                    "type": "function",
+                    "function": {
+                        "name": b["name"],
+                        "arguments": json.dumps(b.get("input", {})),
+                    },
+                }
+                for b in content
+                if b.get("type") == "tool_use"
+            ]
+            msg: dict = {"role": "assistant", "content": text or None}
+            if tool_calls:
+                msg["tool_calls"] = tool_calls
+            out.append(msg)
+        else:  # user turn carrying tool_result (and/or text) blocks
+            for b in content:
+                if b.get("type") == "tool_result":
+                    out.append({
+                        "role": "tool",
+                        "tool_call_id": b["tool_use_id"],
+                        "content": b["content"],
+                    })
+                elif b.get("type") == "text":
+                    out.append({"role": "user", "content": b["text"]})
+    return out
+
+
+def _from_openai_response(resp: dict) -> dict:
+    choice = (resp.get("choices") or [{}])[0]
+    msg = choice.get("message", {}) or {}
+    tool_calls = msg.get("tool_calls") or []
+    if tool_calls:
+        content: list = []
+        if msg.get("content"):
+            content.append({"type": "text", "text": msg["content"]})
+        for tc in tool_calls:
+            fn = tc.get("function", {}) or {}
+            try:
+                args = json.loads(fn.get("arguments") or "{}")
+            except Exception:
+                args = {}
+            content.append({
+                "type": "tool_use",
+                "id": tc.get("id"),
+                "name": fn.get("name"),
+                "input": args,
+            })
+        return {"stop_reason": "tool_use", "content": content}
+    return {
+        "stop_reason": "end_turn",
+        "content": [{"type": "text", "text": msg.get("content") or ""}],
+    }
 
 
 class IncidentAgent:
