@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import uvicorn
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -56,6 +56,7 @@ class SpaStaticFiles(StaticFiles):
 
 from .db import Db
 from .ee.alerting import Alerter, AlertEvent, build_alerter
+from .ee.licensing import License, load_license
 from .ee.lifecycle import run_periodic as run_lifecycle
 from .ee.lifecycle import sweep_lifecycle_once
 from .incident_agent import IncidentAgent, build_incident_agent
@@ -115,8 +116,13 @@ def build_app(
     telemetry: Telemetry | None = None,
     incident_agent: IncidentAgent | None = None,
     alerter: Alerter | None = None,
+    license: License | None = None,
 ) -> FastAPI:
     db = Db(db_path)
+    # v2 EE — the paywall. Verifies MD_LICENSE_KEY; gates the paid (ee/)
+    # features. Unlicensed by default → those features stay off (the free MIT
+    # core is unaffected). Tests inject a License to exercise the gate.
+    license = license if license is not None else load_license()
     # v2 OTel — opt-in export to the operator's observability stack. No-op
     # unless MD_OTEL_ENDPOINT is set (and the [otel] extra installed), so
     # standalone / air-gapped installs are unaffected. Tests inject their own.
@@ -125,10 +131,13 @@ def build_app(
     # Opt-in: inert unless an LLM key (MD_LLM_API_KEY) is configured. Tests
     # inject one with a scripted model.
     incident_agent = incident_agent if incident_agent is not None else build_incident_agent(db)
-    # v2 P6 alerting — webhook notifications on capture. No-op unless a
-    # destination (Slack / PagerDuty / generic) is configured. Tests inject
-    # one with a recording post_fn.
-    alerter = alerter if alerter is not None else build_alerter()
+    # v2 P6 alerting — webhook notifications on capture. PAID (ee/): gated on
+    # the 'alerting' license feature. Without a license it stays a no-op even
+    # if MD_ALERT_* is set. An injected alerter (tests) bypasses the gate.
+    if alerter is None:
+        alerter = build_alerter() if license.allows("alerting") else Alerter()
+        if not license.allows("alerting") and os.environ.get("MD_ALERT_SLACK_WEBHOOK", ""):
+            log.warning("Alerting is configured but requires a paid license; staying off.")
     # Auth config — caller is expected to have already validated startup
     # invariants in main(). Defaulting here keeps existing test callers
     # (which pass no auth_config) seeing v1.5 open-routes behaviour.
@@ -184,10 +193,13 @@ def build_app(
             )
             log.info("Disk retention enabled: cap %d MB", max_disk_mb)
 
-        # v2 P5b — age-based lifecycle (cold-tier + delete). Opt-in; only
-        # scheduled when at least one policy is configured.
+        # v2 P5b — age-based lifecycle (cold-tier + delete). PAID (ee/): runs
+        # only when a policy is configured AND the license allows 'lifecycle'.
         lifecycle_task: asyncio.Task | None = None
-        if cold_after_days > 0 or delete_after_days > 0:
+        lifecycle_configured = cold_after_days > 0 or delete_after_days > 0
+        if lifecycle_configured and not license.allows("lifecycle"):
+            log.warning("Lifecycle policies are configured but require a paid license; skipping.")
+        if lifecycle_configured and license.allows("lifecycle"):
             lifecycle_task = asyncio.create_task(
                 run_lifecycle(
                     db,
@@ -348,6 +360,17 @@ def build_app(
         }
 
     @app.get(
+        "/api/admin/license",
+        tags=["admin"],
+        summary="License status (which paid features are unlocked)",
+    )
+    def license_status():
+        """Whether a valid paid license is installed and what it unlocks
+        (customer, robot limit, features, expiry, id). All-empty / licensed:
+        false means the free Community tier."""
+        return license.status()
+
+    @app.get(
         "/api/admin/alerts",
         tags=["admin"],
         summary="Alerting status (which webhook destinations are configured)",
@@ -390,7 +413,12 @@ def build_app(
     def lifecycle_sweep():
         """Apply the configured `cold_after_days` / `delete_after_days`
         policies immediately. Normally runs hourly. No-op for disabled
-        policies."""
+        policies. PAID (ee/): requires a license with the 'lifecycle' feature."""
+        if not license.allows("lifecycle"):
+            raise HTTPException(
+                status_code=403,
+                detail="Lifecycle policies require a paid license (feature: lifecycle).",
+            )
         result = sweep_lifecycle_once(
             db,
             cold_after_days=cold_after_days,

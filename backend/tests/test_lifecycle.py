@@ -7,10 +7,19 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from missiondebug_backend.db import Db, SessionRow, now_ms
+from missiondebug_backend.ee.licensing import License
 from missiondebug_backend.ee.lifecycle import sweep_lifecycle_once
 from missiondebug_backend.main import _env_int, build_app
 
 _DAY_MS = 86_400_000
+
+
+def _license(*features: str) -> License:
+    """A valid, perpetual test license unlocking the given features."""
+    return License(
+        customer="test", robots=10, features=frozenset(features),
+        expires_at=None, license_id="MD-test", valid=True,
+    )
 
 
 def _mk_session(
@@ -195,8 +204,9 @@ def test_admin_lifecycle_sweep_endpoint(tmp_path):
     db_path = tmp_path / "db.sqlite3"
     sessions = tmp_path / "sessions"
     sessions.mkdir()
-    # Build the app first so its Db is the one the endpoint uses, then seed.
-    app = build_app(sessions, db_path, cold_after_days=30, delete_after_days=0)
+    # Licensed for lifecycle — the endpoint is a paid (ee/) feature.
+    app = build_app(sessions, db_path, cold_after_days=30, delete_after_days=0,
+                    license=_license("lifecycle"))
     db = Db(db_path)
     # Far enough in the past that real wall-clock "now" still tiers it.
     _mk_session(db, sessions, "old", started_at=1)
@@ -211,3 +221,30 @@ def test_admin_lifecycle_sweep_endpoint(tmp_path):
         disk = client.get("/api/admin/disk").json()
         assert disk["cold_after_days"] == 30
         assert disk["lifecycle_enabled"] is True
+
+
+def test_lifecycle_sweep_requires_license(tmp_path):
+    """Unlicensed: the sweep endpoint is gated with a 403."""
+    app = build_app(tmp_path / "s", tmp_path / "db.sqlite3", cold_after_days=30)
+    with TestClient(app) as client:  # no license injected → unlicensed
+        r = client.post("/api/admin/lifecycle/sweep")
+        assert r.status_code == 403
+        assert "license" in r.json()["detail"].lower()
+
+
+def test_license_status_endpoint(tmp_path):
+    app = build_app(tmp_path / "s", tmp_path / "db.sqlite3",
+                    license=_license("alerting", "lifecycle"))
+    with TestClient(app) as client:
+        st = client.get("/api/admin/license").json()
+        assert st["licensed"] is True
+        assert st["customer"] == "test"
+        assert set(st["features"]) == {"alerting", "lifecycle"}
+
+
+def test_license_status_unlicensed_by_default(tmp_path):
+    app = build_app(tmp_path / "s", tmp_path / "db.sqlite3")
+    with TestClient(app) as client:
+        st = client.get("/api/admin/license").json()
+        assert st["licensed"] is False
+        assert st["features"] == []

@@ -212,6 +212,25 @@ def test_ingest_fires_alert(tmp_path):
     assert ev.rule == "battery_low"  # label prefix stripped
 
 
+def test_alerting_gated_by_license(tmp_path, monkeypatch):
+    """A configured webhook only fires with an 'alerting' license; unlicensed
+    leaves it a no-op even though MD_ALERT_SLACK_WEBHOOK is set."""
+    from missiondebug_backend.ee.licensing import License
+
+    monkeypatch.setenv("MD_ALERT_SLACK_WEBHOOK", "http://slack")
+    lic = License(
+        customer="t", robots=1, features=frozenset({"alerting"}),
+        expires_at=None, license_id="t", valid=True,
+    )
+    licensed = build_app(tmp_path / "s", tmp_path / "db.sqlite3", license=lic)
+    with TestClient(licensed) as c:
+        assert c.get("/api/admin/alerts").json()["enabled"] is True
+
+    unlicensed = build_app(tmp_path / "s2", tmp_path / "db2.sqlite3")  # no license
+    with TestClient(unlicensed) as c:
+        assert c.get("/api/admin/alerts").json()["enabled"] is False
+
+
 def test_admin_test_alert_endpoint(tmp_path):
     cfg = AlertConfig(generic_webhook="http://generic")
     post = RecordingPost()

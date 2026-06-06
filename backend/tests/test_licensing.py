@@ -136,3 +136,22 @@ def test_cli_genkey_prints_keypair(capsys):
     main(["genkey"])
     out = capsys.readouterr().out
     assert "PRIVATE KEY" in out and "PUBLIC KEY" in out
+
+
+def test_real_key_via_env_unlocks_the_gate(tmp_path, monkeypatch):
+    """End-to-end: a signed key + public key in the environment flow through
+    load_license() and unlock a gated (ee/) feature in the live app."""
+    from fastapi.testclient import TestClient
+
+    from missiondebug_backend.main import build_app
+
+    priv, pub = generate_keypair()
+    key = _issue(priv, features=["lifecycle"])
+    monkeypatch.setenv("MD_LICENSE_PUBKEY", pub)
+    monkeypatch.setenv("MD_LICENSE_KEY", key)
+
+    # license=None → build_app calls load_license() and reads the env above.
+    app = build_app(tmp_path / "s", tmp_path / "db.sqlite3", cold_after_days=30)
+    with TestClient(app) as client:
+        assert client.get("/api/admin/license").json()["customer"] == "Acme Robotics"
+        assert client.post("/api/admin/lifecycle/sweep").status_code == 200  # unlocked
