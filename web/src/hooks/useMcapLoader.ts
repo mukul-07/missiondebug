@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type {
   ChannelInfo,
+  DecodedJoints,
   DecodedOther,
   DecodedScalar,
   DecodedTf,
@@ -34,6 +35,7 @@ export interface LoadedSession {
   videoByTopic: Map<string, DecodedVideoFrame[]>;
   twistByTopic: Map<string, DecodedTwist[]>;
   tfByTopic: Map<string, DecodedTf[]>;
+  jointsByTopic: Map<string, DecodedJoints[]>;
   scalarByTopic: Map<string, ScalarTrack>;
   otherByTopic: Map<string, OtherTrack>;
   done: boolean;
@@ -47,6 +49,7 @@ const empty = (): LoadedSession => ({
   videoByTopic: new Map(),
   twistByTopic: new Map(),
   tfByTopic: new Map(),
+  jointsByTopic: new Map(),
   scalarByTopic: new Map(),
   otherByTopic: new Map(),
   done: false,
@@ -118,6 +121,12 @@ export function useMcapLoader(url: string | null): LoadedSession {
           cur.tfByTopic.set(m.msg.topic, arr);
           break;
         }
+        case "joints": {
+          const arr = cur.jointsByTopic.get(m.msg.topic) ?? [];
+          arr.push(m.msg);
+          cur.jointsByTopic.set(m.msg.topic, arr);
+          break;
+        }
         case "scalar": {
           let track = cur.scalarByTopic.get(m.msg.topic);
           if (track === undefined) {
@@ -151,6 +160,8 @@ export function useMcapLoader(url: string | null): LoadedSession {
             arr.sort((a, b) => Number(a.timeNs - b.timeNs));
           for (const arr of cur.tfByTopic.values())
             arr.sort((a, b) => Number(a.timeNs - b.timeNs));
+          for (const arr of cur.jointsByTopic.values())
+            arr.sort((a, b) => Number(a.timeNs - b.timeNs));
           for (const track of cur.scalarByTopic.values())
             track.samples.sort((a, b) => Number(a.timeNs - b.timeNs));
           for (const track of cur.otherByTopic.values())
@@ -162,6 +173,7 @@ export function useMcapLoader(url: string | null): LoadedSession {
             videoByTopic: new Map(cur.videoByTopic),
             twistByTopic: new Map(cur.twistByTopic),
             tfByTopic: new Map(cur.tfByTopic),
+            jointsByTopic: new Map(cur.jointsByTopic),
             scalarByTopic: new Map(cur.scalarByTopic),
             otherByTopic: new Map(cur.otherByTopic),
             done: true,

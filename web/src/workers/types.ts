@@ -1,6 +1,6 @@
 // Shared types between main thread and the MCAP-decoder Web Worker.
 
-export type ChannelKind = "video" | "twist" | "tf" | "other";
+export type ChannelKind = "video" | "twist" | "tf" | "joints" | "other";
 
 export interface ChannelInfo {
   id: number;
@@ -40,6 +40,23 @@ export interface DecodedTf {
   qy: number;
   qz: number;
   qw: number;
+}
+
+/**
+ * Manipulator joint state. A `sensor_msgs/JointState` carries parallel
+ * arrays — `name[]` plus `position[]`/`velocity[]`/`effort[]` — which the
+ * generic scalar walker skips (arrays need an index). This dedicated decode
+ * keeps them so the arm's per-joint motion can be charted (one line per
+ * joint), instead of falling through to "no chart". Arrays may be shorter
+ * than `name` (e.g. position-only messages) — the renderer handles that.
+ */
+export interface DecodedJoints {
+  topic: string;
+  timeNs: bigint;
+  names: string[];
+  position: number[];
+  velocity: number[];
+  effort: number[];
 }
 
 /**
@@ -87,6 +104,7 @@ export type WorkerOutbound =
   | { type: "video"; frame: DecodedVideoFrame }
   | { type: "twist"; msg: DecodedTwist }
   | { type: "tf"; msg: DecodedTf }
+  | { type: "joints"; msg: DecodedJoints }
   | { type: "scalar"; msg: DecodedScalar }
   | { type: "other"; msg: DecodedOther }
   | { type: "done"; counts: Record<string, number> }

@@ -30,6 +30,7 @@ function classify(schemaName: string): ChannelKind {
   if (schemaName.endsWith("CompressedImage")) return "video";
   if (schemaName.endsWith("Twist")) return "twist";
   if (schemaName.endsWith("TFMessage")) return "tf";
+  if (schemaName.endsWith("JointState")) return "joints";
   return "other";
 }
 
@@ -224,6 +225,24 @@ async function loadAndDecode(url: string): Promise<void> {
           },
         } satisfies WorkerOutbound);
       }
+    } else if (ch.info.kind === "joints") {
+      const m = decoded as {
+        name?: string[];
+        position?: ArrayLike<number>;
+        velocity?: ArrayLike<number>;
+        effort?: ArrayLike<number>;
+      };
+      ctx.postMessage({
+        type: "joints",
+        msg: {
+          topic: ch.info.topic,
+          timeNs: t,
+          names: m.name ?? [],
+          position: m.position ? Array.from(m.position, Number) : [],
+          velocity: m.velocity ? Array.from(m.velocity, Number) : [],
+          effort: m.effort ? Array.from(m.effort, Number) : [],
+        },
+      } satisfies WorkerOutbound);
     } else if (ch.info.kind === "other") {
       const topic = ch.info.topic;
 

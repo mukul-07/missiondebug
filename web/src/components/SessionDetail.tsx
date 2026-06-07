@@ -9,6 +9,7 @@ import { AnnotationsPanel } from "./AnnotationsPanel";
 import { Timeline } from "./timeline/Timeline";
 import { TrackVideo } from "./timeline/TrackVideo";
 import { TrackPose } from "./timeline/TrackPose";
+import { TrackJoints } from "./timeline/TrackJoints";
 import { TrackScalar } from "./timeline/TrackScalar";
 import { TrackJsonInspector } from "./timeline/TrackJsonInspector";
 import { TopicListExpander } from "./TopicListExpander";
@@ -183,6 +184,10 @@ export function SessionDetail() {
     [loaded.videoByTopic],
   );
   const tfTopics = useMemo(() => Array.from(loaded.tfByTopic.keys()), [loaded.tfByTopic]);
+  const jointsTopics = useMemo(
+    () => Array.from(loaded.jointsByTopic.keys()),
+    [loaded.jointsByTopic],
+  );
   const twistTopics = useMemo(
     () => Array.from(loaded.twistByTopic.keys()),
     [loaded.twistByTopic],
@@ -336,6 +341,15 @@ export function SessionDetail() {
       </div>
 
       <Timeline durationNs={durationNs} twist={primaryTwist} annotations={timelineAnnotations} />
+
+      {/* Manipulator per-joint charts — one line per joint from any
+          sensor_msgs/JointState topic (position/velocity/effort selectable).
+          Renders arm motion the generic scalar grid skips (joint arrays). */}
+      {jointsTopics.length > 0
+        ? jointsTopics.map((t) => (
+            <TrackJoints key={t} topic={t} samples={loaded.jointsByTopic.get(t) ?? []} />
+          ))
+        : null}
 
       {/* P1.7.4 — auto-rendered scalar charts for every "other" topic
           that yielded a numeric leaf. Sorted by sample count desc so

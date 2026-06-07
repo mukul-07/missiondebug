@@ -17,8 +17,10 @@ dist/
 
 # TypeScript ad-hoc emit (IDE/editor with isolatedModules sometimes writes
 # .js next to .ts/.tsx — the canonical build goes to web/dist via vite).
+# Workers were previously un-ignored here, which surfaced stale
+# mcap-decoder.js / types.js as untracked noise and risked Vite resolving
+# them over the .ts. The source is .ts only; ignore all emitted .js.
 web/src/**/*.js
-!web/src/workers/**/*.js
 
 # Data
 sessions/
