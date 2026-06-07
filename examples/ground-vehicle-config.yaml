@@ -45,6 +45,9 @@ topics:
     type: "sensor_msgs/msg/LaserScan"
     rate_divisor: 5     # 10 Hz -> 2 Hz
 
+  # ---- E-stop (subscribed so the e-stop-pressed rule below actually fires) ----
+  - { name: "/e_stop", type: "std_msgs/msg/Bool" }
+
 anomaly:
   # Built-in: stall (zero cmd_vel for sustained period)
   stall:
