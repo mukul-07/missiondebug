@@ -311,8 +311,17 @@ class Db:
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
-        conn = sqlite3.connect(self._path)
+        conn = sqlite3.connect(self._path, timeout=15.0)
         conn.row_factory = sqlite3.Row
+        # Fleet-scale concurrency. Default SQLite serializes writers and lets
+        # one blocked writer error out as "database is locked" — which bites
+        # once ~100 agents heartbeat + ingest at once. WAL lets many readers
+        # run alongside a single writer; busy_timeout makes a blocked writer
+        # wait-and-retry (up to 15s) instead of erroring; NORMAL sync is safe
+        # under WAL and far faster than the FULL default.
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute("PRAGMA busy_timeout = 15000")
+        conn.execute("PRAGMA synchronous = NORMAL")
         # SQLite ships with FK enforcement off; the annotations FK only
         # cascades if we turn it on per-connection.
         conn.execute("PRAGMA foreign_keys = ON")
