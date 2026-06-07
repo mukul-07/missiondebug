@@ -4,6 +4,7 @@ Starts the REAL hub via uvicorn, then 100 agent threads hammer it at once.
 Verifies the WAL + busy_timeout hardening holds at fleet scale — no failures,
 no "database is locked", and all data lands.
 """
+import os
 import threading
 import tempfile
 import time
@@ -15,7 +16,7 @@ import uvicorn
 
 from missiondebug_backend.main import build_app
 
-PORT = 8137
+PORT = int(os.environ.get("MD_LOAD_PORT", "8137"))
 N_AGENTS = 100
 ROUNDS = 20            # heartbeats per agent; ingest every 5th -> 4 incidents/agent
 BASE = f"http://127.0.0.1:{PORT}"
