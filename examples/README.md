@@ -12,6 +12,25 @@ missiondebug-agent`.
 | [forklift-config.yaml](./forklift-config.yaml) | Real-fleet reference. ~30 topics across locomotion / pose / planning / behavior / hardware, with tier-1 / tier-2 / tier-3 commentary. Useful as a "how would I scope this on my own robot" reference. |
 | [rule-patterns.yaml](./rule-patterns.yaml) | Cookbook of `anomaly.rules:` recipes. Numeric thresholds, string-equals, boolean flags, actionlib aborts. Copy individual entries into your config. |
 
+## What renders in the replay UI
+
+Capture + detection are topic-agnostic — the agent records and watches
+*any* topic. The web replay then renders by message type:
+
+| Data | Renders as |
+|---|---|
+| `sensor_msgs/CompressedImage` | video track |
+| `tf2_msgs/TFMessage`, `nav_msgs/Path` | pose / path track |
+| `geometry_msgs/Twist` (`/cmd_vel`-shaped) | velocity charts |
+| **`sensor_msgs/JointState`** | **per-joint chart** — one line per joint (position / velocity / effort), with a legend (arm motion for manipulators) |
+| any other numeric leaf | auto scalar chart, one per topic |
+| every topic | JSON inspector synced to the playhead |
+
+So **ground vehicles, drones, and manipulators all render**: drones get
+cmd_vel + scalar charts (IMU, battery, attitude as numbers); manipulators
+get the per-joint chart for `JointState` plus scalars for the gripper and
+controller feedback.
+
 ## Picking topics
 
 The 60-second buffer lives in RAM. Each topic you subscribe to costs
