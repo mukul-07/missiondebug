@@ -12,6 +12,8 @@
 
 The deepest fleet-ops pain isn't "I can't find what broke" — it's *"we keep re-solving the same incident because nobody remembers it broke this way before."* MissionDebug fixes that. Every capture gets a structured summary; the fleet **incident dashboard** rolls up recurrence rate, MTTR, and top failure patterns; and opening any incident answers **"has this happened before?"** — surfacing similar past incidents *with how they were resolved*.
 
+And you can **ask the whole history in plain English** — *"why does warehouse-bot-03 keep stalling, and what fixed it last time?"* — and get a grounded, citation-backed answer. Bring your own LLM key (Anthropic or OpenAI), or point it at an air-gapped local model.
+
 ![Fleet incident dashboard — recurrence rate, MTTR, estimated re-investigation time avoided, top recurring patterns, captures per robot](docs/screenshot-incidents.png)
 
 Under the hood it's a focused capture layer: an agent runs alongside your ROS 2 stack, keeps a rolling buffer of the topics you care about, and writes a standard MCAP the moment a detector fires — stall, path deviation, low battery, topic dropout, or any rule you write in YAML. Open the web UI, click a session, scrub the timeline. Annotate the moment, share a deep-linked URL with a teammate.
@@ -32,6 +34,26 @@ https://github.com/mukul-07/missiondebug/raw/main/docs/demo.mp4
 MissionDebug is the **post-incident layer**. It's what you reach for *after* the alert fires.
 
 **Single robot or whole fleet.** Each agent works standalone — capture + replay on one robot, no hub required. Point agents at a central **hub** (Fleet Edition) and they sync their incident metadata into the fleet dashboard, similarity search, and resolution tracking shown above. The hub is self-hostable end to end and read-only on robots; recordings stay on the robot (or your S3 bucket) by default and never auto-upload. See [v2-SPEC.md](./v2-SPEC.md).
+
+## Fleet Edition (commercial)
+
+The single-robot **capture + replay + incident dashboard is free and MIT** — run it forever, including commercially. **Fleet Edition** adds the features a 100-robot operation needs, unlocked with a license key:
+
+- **Central hub at fleet scale** — every robot's incidents in one dashboard
+- **Ask AI** — query the whole fleet's incident history in plain English (grounded + cited; BYO LLM key or air-gapped local model)
+- **Alerting** — Slack / PagerDuty / webhook the moment a robot captures an incident, with the *"Nth occurrence"* recurrence count and a deep-link to the replay
+- **OpenTelemetry export** — incidents + KPIs flow into the Grafana / Datadog / alert routing you already run
+- **Retention & cold-tier lifecycle** — release old recording bytes on a schedule but keep the incident memory
+- **Priority support + onboarding**
+
+Activate by setting a license key on the hub — without it, the paid features stay off and the free core is unaffected:
+
+```bash
+export MD_LICENSE_KEY=<your key>
+curl -s http://localhost:8000/api/admin/license   # {"licensed": true, "features": [...], ...}
+```
+
+Pricing is **per-robot-per-month** (volume discounts at 100+ robots). The paid features live in `ee/` (source-visible, proprietary); everything else is MIT — see [LICENSING.md](./LICENSING.md). To try the full product in 60 seconds or discuss a pilot, see the **[demo + commercial overview](https://github.com/mukul-07/missiondebug-demos)**.
 
 ## Why this exists
 
@@ -264,6 +286,12 @@ MissionDebug captures session data when its built-in detectors fire — but your
 - **[Prometheus Alertmanager](./docs/INTEGRATIONS.md#2-prometheus-alertmanager-5-minutes)** — webhook receiver + small shim that turns `alerts[]` into a label
 - **[ros2_medkit Triggers](./docs/INTEGRATIONS.md#3-ros2_medkit-triggers-10-minutes)** — bridge script that subscribes to medkit's SSE event stream and forwards triggers
 
+And **outbound** — push incidents *to* the tools you already run (Fleet Edition):
+
+- **OpenTelemetry export** — incidents + KPIs into your Grafana / Datadog / alert routing, no per-vendor connector
+- **Native alerting** — Slack / PagerDuty / generic webhook the instant a robot captures an incident, metadata-only and air-gap-safe
+- **Ask AI** — a natural-language agent over your incident corpus (BYO LLM key or local model)
+
 Full recipes + working scripts: [`docs/INTEGRATIONS.md`](./docs/INTEGRATIONS.md).
 
 ## How it's built
@@ -281,7 +309,7 @@ Specs:
 ## Tests
 
 ```bash
-make test                    # 87 tests across agent + backend, ~1s
+make test                    # 283 tests across agent + backend (94 agent + 189 backend)
 ```
 
 ## License
