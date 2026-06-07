@@ -298,7 +298,7 @@ Full recipes + working scripts: [`docs/INTEGRATIONS.md`](./docs/INTEGRATIONS.md)
 
 - **Agent** (Python, `agent/`) — rclpy subscribers → per-topic ring buffers in RAM (rate-limited & sized) → MCAP writer → control HTTP API on `:7000`. Built-in detectors (stall, path-deviation, battery_low, topic_dropout) plus a config-driven rule engine; all detectors auto-save and label the resulting session.
 - **Backend** (FastAPI + SQLite, `backend/`) — auto-rescans the sessions directory every 5s, indexes MCAP metadata, serves files with HTTP range support so the browser streams. Disk-retention sweeper runs every 30s. Mounts the web UI's static dist at `/` when present.
-- **Web** (React + Vite, `web/`) — Web Worker decodes the MCAP using `@foxglove/rosmsg2-serialization`, renders synchronized video / pose / scalar tracks (one chart per numeric topic, filterable) and a JSON inspector at the playhead. Annotations stored server-side; URLs are deep-linkable with `?t=23.4`.
+- **Web** (React + Vite, `web/`) — Web Worker decodes the MCAP using `@foxglove/rosmsg2-serialization`, renders synchronized video / pose / scalar tracks (one chart per numeric topic, filterable), **per-joint charts for `sensor_msgs/JointState`** (one line per joint — arm motion for manipulators), and a JSON inspector at the playhead. Annotations stored server-side; URLs are deep-linkable with `?t=23.4`.
 
 Specs:
 - [SPEC.md](./SPEC.md) — v0 (record + replay loop, single robot, localhost)
