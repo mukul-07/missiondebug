@@ -42,9 +42,10 @@ log = logging.getLogger(__name__)
 # Your license-signing PUBLIC key (base64url of the 32 raw Ed25519 bytes).
 # Generate your keypair with `python -m missiondebug_backend.ee.make_license
 # genkey`, keep the PRIVATE key secret, and paste the PUBLIC key here (or set
-# MD_LICENSE_PUBKEY at runtime). Empty default = no bundled key → every key is
-# rejected until you set your own.
-_BUNDLED_PUBLIC_KEY_B64 = ""
+# MD_LICENSE_PUBKEY at runtime). Safe to be public — it can only verify keys,
+# never mint them. (The demo overrides this with its own key via
+# MD_LICENSE_PUBKEY.)
+_BUNDLED_PUBLIC_KEY_B64 = "Ux_YElMUVzVG2UQ1wZpQEICSZj89kDfqJGap9ERHqnc"
 
 
 def _b64url_decode(s: str) -> bytes:
