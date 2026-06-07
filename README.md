@@ -53,7 +53,7 @@ export MD_LICENSE_KEY=<your key>
 curl -s http://localhost:8000/api/admin/license   # {"licensed": true, "features": [...], ...}
 ```
 
-Pricing is **per-robot-per-month** (volume discounts at 100+ robots). The paid features live in `ee/` (source-visible, proprietary); everything else is MIT — see [LICENSING.md](./LICENSING.md). To try the full product in 60 seconds or discuss a pilot, see the **[demo + commercial overview](https://github.com/mukul-07/missiondebug-demos)**.
+Pricing is **per-robot-per-month** (volume discounts at 100+ robots) — see the **[plans & pricing →](https://mukul-07.github.io/missiondebug-demos/commercial.html)**. The paid features live in `ee/` (source-visible, proprietary); everything else is MIT — see [LICENSING.md](./LICENSING.md). Try the full product in 60 seconds via the **[demo repo](https://github.com/mukul-07/missiondebug-demos)**.
 
 ## Why this exists
 
