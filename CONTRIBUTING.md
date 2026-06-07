@@ -11,9 +11,9 @@ Three components, three languages, one repo:
 - `backend/` — Python (FastAPI) session index + retention
 - `web/` — TypeScript (React + Vite) MCAP replay UI
 
-See [`SPEC.md`](./SPEC.md) and the versioned `*-SPEC.md` files for the
-"what is in scope" intent. New features should fit into an existing
-phase or be explicitly scoped to a future version.
+New features should fit the existing architecture (agent / backend / web)
+or be explicitly scoped to a future version — open an issue to discuss
+scope before a large change.
 
 ## Local setup
 

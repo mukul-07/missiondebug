@@ -8,10 +8,9 @@ the criteria in **REP 2004** ([Package Quality Categories][rep-2004]).
 **Claimed level:** **4 (Demonstration)**.
 
 This is an honest claim, not a marketing claim. v1.5 ships and works. It
-has not yet been validated by a production design partner running
-unattended for the 14-day acceptance window described in
-[`v1.5-SPEC.md`](./v1.5-SPEC.md). Until that happens, we will not claim
-a higher level.
+has not yet been validated by a production deployment running unattended
+for a 14-day acceptance window. Until that happens, we will not claim a
+higher level.
 
 Re-evaluation will follow the v1.5 field acceptance. If a partner runs
 the system unattended for 14 days without data loss or crashes, we will
@@ -22,10 +21,9 @@ re-assess against Level 3 criteria.
 ### 1. Version Policy
 
 - Uses **semantic versioning** (`v0`, `v1`, `v1.5`).
-- Major and minor versions correspond to versioned `*-SPEC.md` documents
-  describing what is in scope and what is out of scope for that version.
-- Breaking changes between versions are documented in the relevant
-  spec's "What is NOT in scope" section.
+- Each version has a defined scope — what is in scope and what is out of
+  scope — described in the README and the release notes.
+- Breaking changes between versions are documented in the release notes.
 
 ### 2. Change Control Process
 
@@ -39,8 +37,8 @@ re-assess against Level 3 criteria.
 
 ### 3. Documentation
 
-- **Feature list / scope:** [`v1.5-SPEC.md`](./v1.5-SPEC.md), the
-  canonical document for what v1.5 does and explicitly does not do.
+- **Feature list / scope:** the [README](./README.md), the canonical
+  description of what MissionDebug does and how to run it.
 - **Public API:** the agent's REST control plane (`POST /api/save`)
   and the backend's HTTP API (`GET /api/sessions`, `POST
   /api/admin/sweep`, etc.) are documented in the README and exposed
@@ -99,9 +97,8 @@ Network exposure is minimal:
 
 - Agent listens on `127.0.0.1:7000` (loopback only).
 - Backend listens on `0.0.0.0:8000` by default for local-network access
-  from the engineer's laptop. There is no authentication. Customers
-  who run MissionDebug on the public internet are explicitly out of
-  scope for v1.5; see [`v1.5-SPEC.md`](./v1.5-SPEC.md) under "What
-  v1.5 IS NOT" — *"not cloud-hosted, not authenticated. Network-level
-  trust."*
+  from the engineer's laptop. In single-robot mode there is no
+  authentication — it is **not cloud-hosted and not authenticated**;
+  it assumes network-level trust. Running the single-robot UI on the
+  public internet is out of scope (fleet mode adds an auth gate).
 - Vulnerability reporting policy is documented in [`SECURITY.md`](./SECURITY.md).

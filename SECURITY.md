@@ -16,9 +16,9 @@ The current scope assumes:
 - The agent runs on the robot itself.
 - The backend serves the UI on the same local network as the engineer's
   laptop.
-- Network-level trust — there is no authentication. Putting the UI on
-  the public internet is **out of scope** for v1.5 and is documented
-  in [`v1.5-SPEC.md`](./v1.5-SPEC.md).
+- Network-level trust — in single-robot mode there is no authentication.
+  Putting that UI on the public internet is **out of scope** (fleet mode
+  adds an auth gate; see the README).
 
 If you deploy MissionDebug behind a reverse proxy with auth (nginx +
 basic auth, Authelia, Cloudflare Tunnel, etc.), that is on you.
