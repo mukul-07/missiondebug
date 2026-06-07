@@ -84,7 +84,7 @@ class ResolutionPayload(BaseModel):
     )
 
 
-def get_router(get_db, telemetry: Telemetry | None = None) -> APIRouter:
+def get_router(get_db, telemetry: Telemetry | None = None, cache=None) -> APIRouter:
     router = APIRouter(
         prefix="/api/v2/sessions",
         tags=["resolutions"],
@@ -168,6 +168,10 @@ def get_router(get_db, telemetry: Telemetry | None = None) -> APIRouter:
             except Exception:  # pragma: no cover - defensive
                 pass
 
+        # The edit changes the dashboard's resolution/MTTR/recurrence KPIs —
+        # drop the cache so the dashboard reflects it on the next read.
+        if cache is not None:
+            cache.clear()
         return _serialize(row)
 
     @router.delete(
@@ -179,5 +183,7 @@ def get_router(get_db, telemetry: Telemetry | None = None) -> APIRouter:
         if db.get_session(session_id) is None:
             raise HTTPException(404, "session not found")
         db.delete_resolution(session_id)
+        if cache is not None:
+            cache.clear()
 
     return router

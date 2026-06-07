@@ -26,7 +26,7 @@ from ..db import Db
 from ..similarity import rank_similar
 
 
-def get_router(get_db) -> APIRouter:
+def get_router(get_db, cache=None) -> APIRouter:
     router = APIRouter(prefix="/api/v2/sessions", tags=["similarity"])
 
     @router.get(
@@ -49,36 +49,41 @@ def get_router(get_db) -> APIRouter:
         sessions with summaries, the response is an empty list — never
         an error. The UI renders an explanatory empty state.
         """
-        query = db.get_session(session_id)
-        if query is None:
-            raise HTTPException(404, "session not found")
-        if not query.summary:
-            return {"similar": [], "reason": "query session has no summary"}
+        # Cache the (expensive, pure-Python TF-IDF) result with single-flight,
+        # so concurrent views of the same incident share one computation. The
+        # corpus only changes when a new session is ingested, which clears it.
+        def compute() -> dict:
+            query = db.get_session(session_id)
+            if query is None:
+                raise HTTPException(404, "session not found")  # not cached
+            if not query.summary:
+                return {"similar": [], "reason": "query session has no summary"}
+            past = db.list_past_sessions_with_summary(
+                before_started_at=query.started_at,
+                exclude_id=query.id,
+            )
+            if not past:
+                return {"similar": []}
+            candidates = [(s.id, s.summary or "") for s in past]
+            ranked = rank_similar(query.summary, candidates, k)
+            by_id = {s.id: s for s in past}
+            return {
+                "similar": [
+                    {
+                        "session_id": sid,
+                        "score": round(score, 4),
+                        "label": by_id[sid].label,
+                        "robot_id": by_id[sid].robot_id,
+                        "subsystem": by_id[sid].subsystem,
+                        "started_at": by_id[sid].started_at,
+                        "summary": by_id[sid].summary,
+                    }
+                    for sid, score in ranked
+                ],
+            }
 
-        past = db.list_past_sessions_with_summary(
-            before_started_at=query.started_at,
-            exclude_id=query.id,
-        )
-        if not past:
-            return {"similar": []}
-
-        candidates = [(s.id, s.summary or "") for s in past]
-        ranked = rank_similar(query.summary, candidates, k)
-
-        by_id = {s.id: s for s in past}
-        return {
-            "similar": [
-                {
-                    "session_id": sid,
-                    "score": round(score, 4),
-                    "label": by_id[sid].label,
-                    "robot_id": by_id[sid].robot_id,
-                    "subsystem": by_id[sid].subsystem,
-                    "started_at": by_id[sid].started_at,
-                    "summary": by_id[sid].summary,
-                }
-                for sid, score in ranked
-            ],
-        }
+        if cache is None:
+            return compute()
+        return cache.get_or_compute(f"sim:{session_id}:{k}", compute)
 
     return router

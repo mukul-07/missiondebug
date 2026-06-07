@@ -20,12 +20,11 @@ fleet crosses 10K sessions per window).
 from __future__ import annotations
 
 from collections import Counter
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Query
 
-from ..db import Db, FleetSessionRow, TERMINAL_STATUSES
-
+from ..db import TERMINAL_STATUSES, Db, FleetSessionRow
 
 _MS_PER_DAY = 24 * 60 * 60 * 1000
 
@@ -183,7 +182,7 @@ def _top_patterns(rows: list[FleetSessionRow], *, k: int = 5) -> list[dict]:
     return ranked[:k]
 
 
-def get_router(get_db) -> APIRouter:
+def get_router(get_db, cache=None) -> APIRouter:
     router = APIRouter(prefix="/api/v2/fleet", tags=["fleet"])
 
     @router.get(
@@ -212,35 +211,40 @@ def get_router(get_db) -> APIRouter:
         the current UTC instant; `window_start_ms = end - window_days *
         86400000`. Captures binned by their `started_at`.
         """
-        end_ms = _now_ms()
-        start_ms = end_ms - window_days * _MS_PER_DAY
-
-        rows = db.list_sessions_in_window(
-            started_at_gte=start_ms,
-            started_at_lt=end_ms,
-        )
-
-        if not rows:
-            return _empty_response(
-                window_days=window_days, start=start_ms, end=end_ms,
+        # Cache the rollup briefly with single-flight: a fleet ops team
+        # watching the dashboard produces many concurrent/repeat reads of the
+        # same window, each of which would otherwise recompute and pile up on
+        # the GIL. A capture or a resolution edit clears the cache, so this
+        # stays fresh right after an edit.
+        def compute() -> dict:
+            end_ms = _now_ms()
+            start_ms = end_ms - window_days * _MS_PER_DAY
+            rows = db.list_sessions_in_window(
+                started_at_gte=start_ms, started_at_lt=end_ms,
             )
+            if not rows:
+                return _empty_response(
+                    window_days=window_days, start=start_ms, end=end_ms,
+                )
+            mttr_ms, mttr_n = _mttr(rows)
+            return {
+                "window_days": window_days,
+                "window_start_ms": start_ms,
+                "window_end_ms": end_ms,
+                "captures": {
+                    "total": len(rows),
+                    "by_day": _by_day_series(rows, start_ms, end_ms),
+                    "by_robot": _by_robot(rows),
+                },
+                "resolution": _resolution_breakdown(rows),
+                "mttr_ms": mttr_ms,
+                "mttr_n": mttr_n,
+                "recurrence": _recurrence(rows),
+                "top_patterns": _top_patterns(rows),
+            }
 
-        mttr_ms, mttr_n = _mttr(rows)
-
-        return {
-            "window_days": window_days,
-            "window_start_ms": start_ms,
-            "window_end_ms": end_ms,
-            "captures": {
-                "total": len(rows),
-                "by_day": _by_day_series(rows, start_ms, end_ms),
-                "by_robot": _by_robot(rows),
-            },
-            "resolution": _resolution_breakdown(rows),
-            "mttr_ms": mttr_ms,
-            "mttr_n": mttr_n,
-            "recurrence": _recurrence(rows),
-            "top_patterns": _top_patterns(rows),
-        }
+        if cache is None:
+            return compute()
+        return cache.get_or_compute(f"stats:{window_days}", compute)
 
     return router

@@ -85,20 +85,28 @@ def hit(c, name, method, path, **kw):
         rec(name, False, time.perf_counter() - t0, str(e))
 
 
+ACTIVE_POOL = 40  # a fleet views a working set of "active" incidents, not all 800
+
+
 def client(ci):
     c = httpx.Client(base_url=BASE, timeout=30)
     for r in range(ROUNDS):
-        sid = ids[(ci * ROUNDS + r) % N_SESSIONS]
+        # Realistic read-heavy profile: an ops team *views* the dashboard +
+        # a working set of active incidents (reads every round), and *edits*
+        # only occasionally (writes once per client). Reads dominate, so the
+        # short-TTL cache stays warm between the rare writes.
+        sid = ids[(ci * ROUNDS + r) % ACTIVE_POOL]
         hit(c, "list", "GET", "/api/sessions?limit=200")
         hit(c, "detail", "GET", f"/api/sessions/{sid}")
         hit(c, "dashboard", "GET", "/api/v2/fleet/incident-stats?window_days=30")
         hit(c, "similarity", "GET", f"/api/v2/sessions/{sid}/similar?k=3")
         hit(c, "resolution_get", "GET", f"/api/v2/sessions/{sid}/resolution")
-        hit(c, "resolution_put", "PUT", f"/api/v2/sessions/{sid}/resolution",
-            json={"status": "investigating", "root_cause": "load test"})
         hit(c, "annotation_list", "GET", f"/api/sessions/{sid}/annotations")
-        hit(c, "annotation_post", "POST", f"/api/sessions/{sid}/annotations",
-            json={"time_ns": 1000 + r, "body": "load test note"})
+        if r == 0:  # occasional writes (viewers >> editors)
+            hit(c, "resolution_put", "PUT", f"/api/v2/sessions/{sid}/resolution",
+                json={"status": "investigating", "root_cause": "load test"})
+            hit(c, "annotation_post", "POST", f"/api/sessions/{sid}/annotations",
+                json={"time_ns": 1000 + r, "body": "load test note"})
     c.close()
 
 

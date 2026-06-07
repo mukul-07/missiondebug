@@ -72,6 +72,7 @@ from .routes.resolutions import get_router as resolutions_router
 from .routes.sessions import get_router as sessions_router
 from .routes.similarity import get_router as similarity_router
 from .scanner import scan_directory
+from .cache import TTLCache
 from .telemetry import Telemetry, build_telemetry
 
 log = logging.getLogger(__name__)
@@ -119,6 +120,10 @@ def build_app(
     license: License | None = None,
 ) -> FastAPI:
     db = Db(db_path)
+    # Short-TTL cache for the compute-heavy read endpoints (fleet dashboard
+    # rollup + TF-IDF similarity). Cleared on capture/resolution writes so the
+    # dashboard stays fresh; the TTL just backstops non-API changes (scanner).
+    read_cache = TTLCache(ttl_seconds=15.0)
     # v2 EE — the paywall. Verifies MD_LICENSE_KEY; gates the paid (ee/)
     # features. Unlicensed by default → those features stay off (the free MIT
     # core is unaffected). Tests inject a License to exercise the gate.
@@ -298,15 +303,15 @@ def build_app(
     app.include_router(files_router(get_db))
     app.include_router(annotations_router(get_db))
     # v2 fleet endpoints — agents ingest sessions + post heartbeats.
-    app.include_router(ingest_router(get_db, telemetry, alerter))
+    app.include_router(ingest_router(get_db, telemetry, alerter, read_cache))
     app.include_router(agents_router(get_db))
     # v2 P3.5.2 — similarity search ("Has this happened before?").
-    app.include_router(similarity_router(get_db))
+    app.include_router(similarity_router(get_db, read_cache))
     # v2 P3.5.6 — per-session resolution records (status + root cause).
-    app.include_router(resolutions_router(get_db, telemetry))
+    app.include_router(resolutions_router(get_db, telemetry, read_cache))
     # v2 P3.5.6b — fleet incident dashboard rollup (captures, MTTR,
     # resolution rate, recurrence, top patterns).
-    app.include_router(fleet_stats_router(get_db))
+    app.include_router(fleet_stats_router(get_db, read_cache))
     # v2 incident agent — POST /api/v2/incidents/ask
     app.include_router(incidents_router(incident_agent))
 

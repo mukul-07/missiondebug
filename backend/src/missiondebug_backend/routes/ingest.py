@@ -60,7 +60,10 @@ class SessionIngestResponse(BaseModel):
 
 
 def get_router(
-    get_db, telemetry: Telemetry | None = None, alerter: Alerter | None = None
+    get_db,
+    telemetry: Telemetry | None = None,
+    alerter: Alerter | None = None,
+    cache=None,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/v1", tags=["ingest"])
     telemetry = telemetry or Telemetry()
@@ -105,6 +108,11 @@ def get_router(
             subsystem=payload.subsystem,
             summary=payload.summary,
         ))
+
+        # A new capture changes the dashboard rollup + the similarity corpus —
+        # drop the cache so the next read recomputes fresh.
+        if cache is not None:
+            cache.clear()
 
         # v2 OTel — opt-in export to the operator's observability stack.
         # No-op unless MD_OTEL_ENDPOINT is configured. prior_occurrences is
