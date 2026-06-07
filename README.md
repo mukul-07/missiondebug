@@ -18,6 +18,8 @@ And you can **ask the whole history in plain English** — *"why does warehouse-
 
 Under the hood it's a focused capture layer: an agent runs alongside your ROS 2 stack, keeps a rolling buffer of the topics you care about, and writes a standard MCAP the moment a detector fires — stall, path deviation, low battery, topic dropout, or any rule you write in YAML. Open the web UI, click a session, scrub the timeline. Annotate the moment, share a deep-linked URL with a teammate.
 
+**Works on any ROS 2 robot** — warehouse AMRs, drones (mavros), manipulators (MoveIt2), agriculture, defense. The agent is topic-agnostic; the warehouse AGV is just the running example. The replay renders camera, pose, velocity, **per-joint** (manipulators), and auto scalar charts from whatever topics you capture. See [`examples/`](./examples/) for ready-to-edit configs per robot type.
+
 Standards-native (MCAP + Foxglove). Local-first — self-hostable end to end, no mandatory cloud, no login, no proprietary format. Air-gap friendly: structured summaries and similarity search work fully offline.
 
 https://github.com/mukul-07/missiondebug/raw/main/docs/demo.mp4
