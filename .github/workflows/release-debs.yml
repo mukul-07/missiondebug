@@ -115,6 +115,7 @@ jobs:
       # relocation, the entry point, and that the [otel,license] extras
       # made it into the package.
       - name: Smoke test backend (install + run)
+        shell: bash
         run: |
           dpkg -i dist/missiondebug-backend_*.deb
           /opt/missiondebug/backend-venv/bin/python -c \
@@ -123,13 +124,14 @@ jobs:
           /opt/missiondebug/backend-venv/bin/missiondebug-backend \
             --sessions-dir /tmp/sessions --db /tmp/md.sqlite3 \
             --host 127.0.0.1 --port 8000 &
+          BACKEND_PID=$!
           for i in $(seq 1 30); do
             curl -fsS http://127.0.0.1:8000/healthz && break
             [ "$i" = 30 ] && { echo "backend never came up" >&2; exit 1; }
             sleep 1
           done
           curl -fsS http://127.0.0.1:8000/api/admin/license
-          kill %1
+          kill "$BACKEND_PID"
 
       # The agent deb depends on ROS 2 packages this container doesn't
       # have, so extract instead of install and import the entry module
