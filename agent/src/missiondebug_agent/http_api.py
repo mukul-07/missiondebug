@@ -155,7 +155,7 @@ def build_app(
             "writes an MCAP file when a detector fires or when this API is "
             "called. Bind to loopback only — there is no authentication."
         ),
-        version="1.5.0",
+        version="0.1.0",
         license_info={"name": "MIT", "url": "https://github.com/mukul-07/missiondebug/blob/main/LICENSE"},
         contact={"name": "MissionDebug", "url": "https://github.com/mukul-07/missiondebug"},
         openapi_tags=[

@@ -25,7 +25,7 @@ from .ring_buffer import RingBuffer
 
 # Bumped per release; reported to the hub in every heartbeat so fleet
 # operators can spot agents lagging behind on rollouts.
-AGENT_VERSION = "1.5.0"
+AGENT_VERSION = "0.1.0"
 
 log = logging.getLogger("missiondebug_agent")
 
