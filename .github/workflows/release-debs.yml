@@ -1,0 +1,169 @@
+name: Release .debs
+
+# Builds the three installable .debs (agent, backend, web) and attaches
+# them to a GitHub Release when a v* tag is pushed. workflow_dispatch
+# runs the same build + smoke tests without publishing anything — use it
+# to verify packaging changes from a branch.
+#
+# agent/backend bundle a venv whose python is pinned to the build
+# distro's interpreter, so they're built per distro: ubuntu22.04 debs
+# for ROS 2 Humble robots (python3.10), ubuntu24.04 for Jazzy
+# (python3.12). The web deb is static files (Architecture: all).
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-debs-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-web:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Compute version
+        id: ver
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=0.0.0~dev${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build web .deb
+        run: MD_VERSION='${{ steps.ver.outputs.version }}' ./packaging/build-deb.sh web
+
+      - name: Inspect package
+        run: dpkg-deb --info dist/missiondebug-web_*.deb
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb-web
+          path: dist/*.deb
+          if-no-files-found: error
+
+  build-python:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: ubuntu-latest, arch: amd64, ubuntu: "22.04" }
+          - { runner: ubuntu-latest, arch: amd64, ubuntu: "24.04" }
+          - { runner: ubuntu-24.04-arm, arch: arm64, ubuntu: "22.04" }
+          - { runner: ubuntu-24.04-arm, arch: arm64, ubuntu: "24.04" }
+    name: build-python (ubuntu${{ matrix.ubuntu }} ${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    container: ubuntu:${{ matrix.ubuntu }}
+    steps:
+      - name: Install build tools
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            python3 python3-venv python3-pip dpkg-dev fakeroot \
+            git ca-certificates curl adduser
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compute version
+        id: ver
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=0.0.0~dev${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build agent + backend .debs
+        env:
+          MD_VERSION: ${{ steps.ver.outputs.version }}
+          MD_DEB_SUFFIX: ubuntu${{ matrix.ubuntu }}
+        run: |
+          ./packaging/build-deb.sh agent
+          ./packaging/build-deb.sh backend
+
+      - name: Inspect packages
+        run: |
+          for deb in dist/*.deb; do
+            echo "== $deb"
+            dpkg-deb --info "$deb"
+          done
+
+      # Real install of the backend deb (this container satisfies its
+      # deps), then boot the service binary and hit it. Proves the venv
+      # relocation, the entry point, and that the [otel,license] extras
+      # made it into the package.
+      - name: Smoke test backend (install + run)
+        shell: bash
+        run: |
+          dpkg -i dist/missiondebug-backend_*.deb
+          /opt/missiondebug/backend-venv/bin/python -c \
+            "import cryptography, opentelemetry; import missiondebug_backend.ee.licensing"
+          mkdir -p /tmp/sessions
+          /opt/missiondebug/backend-venv/bin/missiondebug-backend \
+            --sessions-dir /tmp/sessions --db /tmp/md.sqlite3 \
+            --host 127.0.0.1 --port 8000 &
+          BACKEND_PID=$!
+          for i in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:8000/healthz && break
+            [ "$i" = 30 ] && { echo "backend never came up" >&2; exit 1; }
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8000/api/admin/license
+          kill "$BACKEND_PID"
+
+      # The agent deb depends on ROS 2 packages this container doesn't
+      # have, so extract instead of install and import the entry module
+      # from the bundled venv — everything except rclpy itself.
+      - name: Smoke test agent (extract + import)
+        run: |
+          dpkg-deb -x dist/missiondebug-agent_*.deb /tmp/agent-root
+          /tmp/agent-root/opt/missiondebug/venv/bin/python -c \
+            "import missiondebug_agent.main; import missiondebug_agent.detectors.from_config"
+          test -x /tmp/agent-root/opt/missiondebug/bin/missiondebug-agent
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb-ubuntu${{ matrix.ubuntu }}-${{ matrix.arch }}
+          path: dist/*.deb
+          if-no-files-found: error
+
+  release:
+    if: github.ref_type == 'tag'
+    needs: [build-web, build-python]
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "MissionDebug ${GITHUB_REF_NAME}" \
+            --generate-notes \
+            dist/*.deb

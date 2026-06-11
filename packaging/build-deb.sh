@@ -43,10 +43,23 @@ mkdir -p "$DIST"
 
 # ---- helpers --------------------------------------------------------------
 
+# __PYDEP__ pins the runtime python to the exact minor the venv was built
+# against (the venv's bin/python is a symlink to it, so "python3.10 |
+# python3.11" alternation would lie on any build host but one). Set by
+# build_agent/build_backend; defaults to python3 for templates without it.
+PYDEP="python3"
+
 write_control() {
     sed -e "s/__VERSION__/$VERSION/g" -e "s/__ARCH__/$ARCH_NATIVE/g" \
+        -e "s/__PYDEP__/$PYDEP/g" \
         "$1" > "$2"
 }
+
+# Optional distro tag in the output filename (e.g. MD_DEB_SUFFIX=ubuntu22.04
+# -> missiondebug-agent_1.0.0_ubuntu22.04_amd64.deb). The venv pins the deb
+# to the build distro's python, so multi-distro release builds need
+# distinguishable filenames.
+SUFFIX="${MD_DEB_SUFFIX:+${MD_DEB_SUFFIX}_}"
 
 # pip writes absolute shebangs based on where the venv was created. On
 # install, the venv path will be different (no /home/.../build/deb/...
@@ -78,6 +91,7 @@ build_agent() {
     done
     local PY
     PY="$(command -v python3.10 || command -v python3)"
+    PYDEP="$("$PY" -c 'import sys; print("python%d.%d" % sys.version_info[:2])')"
     echo "[agent] python: $PY ($($PY --version)) arch=$ARCH_NATIVE version=$VERSION"
 
     rm -rf "$STAGE"
@@ -107,7 +121,7 @@ build_agent() {
 /etc/missiondebug/config.yaml.default
 EOF
 
-    local OUT="$DIST/missiondebug-agent_${VERSION}_${ARCH_NATIVE}.deb"
+    local OUT="$DIST/missiondebug-agent_${VERSION}_${SUFFIX}${ARCH_NATIVE}.deb"
     fakeroot dpkg-deb --build --root-owner-group "$STAGE" "$OUT"
     echo "[agent] built $OUT"
 }
@@ -126,6 +140,7 @@ build_backend() {
     done
     local PY
     PY="$(command -v python3.10 || command -v python3)"
+    PYDEP="$("$PY" -c 'import sys; print("python%d.%d" % sys.version_info[:2])')"
     echo "[backend] python: $PY ($($PY --version)) arch=$ARCH_NATIVE version=$VERSION"
 
     rm -rf "$STAGE"
@@ -135,7 +150,10 @@ build_backend() {
     # Separate venv from the agent's so they upgrade independently.
     "$PY" -m venv "$PREFIX/backend-venv"
     "$PREFIX/backend-venv/bin/pip" install --quiet --upgrade pip
-    "$PREFIX/backend-venv/bin/pip" install --quiet "$ROOT/backend"
+    # [otel,license] match the published container image: a native Fleet
+    # install must be able to verify license keys (cryptography) and export
+    # to an OTLP collector. Both stay runtime opt-in via env vars.
+    "$PREFIX/backend-venv/bin/pip" install --quiet "$ROOT/backend[otel,license]"
 
     find "$PREFIX/backend-venv/lib" -name "__pycache__" -type d -prune \
         -exec rm -rf {} + 2>/dev/null || true
@@ -156,7 +174,7 @@ build_backend() {
 /etc/missiondebug/backend.env.default
 EOF
 
-    local OUT="$DIST/missiondebug-backend_${VERSION}_${ARCH_NATIVE}.deb"
+    local OUT="$DIST/missiondebug-backend_${VERSION}_${SUFFIX}${ARCH_NATIVE}.deb"
     fakeroot dpkg-deb --build --root-owner-group "$STAGE" "$OUT"
     echo "[backend] built $OUT"
 }

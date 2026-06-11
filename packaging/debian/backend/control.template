@@ -4,7 +4,7 @@ Section: misc
 Priority: optional
 Architecture: __ARCH__
 Maintainer: MissionDebug <noreply@missiondebug.local>
-Depends: python3.10 | python3.11, python3.10-venv | python3-venv, adduser
+Depends: __PYDEP__, __PYDEP__-venv, adduser
 Recommends: missiondebug-web
 Description: MissionDebug backend API + session index
  FastAPI service that indexes captured MCAP sessions, serves them to the
