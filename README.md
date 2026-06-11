@@ -94,15 +94,27 @@ The fixture is 30 seconds long with a deliberate stall (8–14s) and a 0.8m path
 
 ## Install on a real robot
 
-Grab the prebuilt `.deb`s from the [latest release](https://github.com/mukul-07/missiondebug/releases/latest). Pick the pair matching your robot's OS — `ubuntu22.04` for ROS 2 Humble, `ubuntu24.04` for Jazzy — and architecture (`amd64` or `arm64`; Jetson and Pi are `arm64`):
+**Via the apt repository** (recommended — `apt upgrade` picks up new versions):
+
+```bash
+sudo install -d /etc/apt/keyrings
+curl -fsSL https://mukul-07.github.io/missiondebug/missiondebug-archive-key.asc \
+  | sudo gpg --dearmor -o /etc/apt/keyrings/missiondebug.gpg
+echo "deb [signed-by=/etc/apt/keyrings/missiondebug.gpg] https://mukul-07.github.io/missiondebug $(lsb_release -cs) main" \
+  | sudo tee /etc/apt/sources.list.d/missiondebug.list
+
+sudo apt update
+sudo apt install missiondebug-agent missiondebug-backend missiondebug-web
+```
+
+Suites: `jammy` (Ubuntu 22.04 / ROS 2 Humble) and `noble` (Ubuntu 24.04 / ROS 2 Jazzy); `amd64` and `arm64` (Jetson, Pi). Robots that only capture need just `missiondebug-agent`; a central hub machine needs `missiondebug-backend missiondebug-web`.
+
+**Or grab the `.deb`s directly** from the [latest release](https://github.com/mukul-07/missiondebug/releases/latest) (one-off installs, air-gapped robots):
 
 ```bash
 # Example: Humble robot on a Jetson (Ubuntu 22.04 arm64)
 wget https://github.com/mukul-07/missiondebug/releases/latest/download/missiondebug-agent_VERSION_ubuntu22.04_arm64.deb
-wget https://github.com/mukul-07/missiondebug/releases/latest/download/missiondebug-backend_VERSION_ubuntu22.04_arm64.deb
-wget https://github.com/mukul-07/missiondebug/releases/latest/download/missiondebug-web_VERSION_all.deb
-
-sudo apt install ./missiondebug-agent_*.deb ./missiondebug-backend_*.deb ./missiondebug-web_*.deb
+sudo apt install ./missiondebug-agent_*.deb
 ```
 
 (`apt install ./file.deb` resolves the ROS dependencies for you; plain `dpkg -i` doesn't.)
