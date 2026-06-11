@@ -73,25 +73,6 @@ Most ROS debugging tools assume you knew to start recording. MissionDebug always
 
 No ROS install, no source checkout — just Docker. See [missiondebug-demos](https://github.com/mukul-07/missiondebug-demos): `git clone` → `docker compose up` → land on a populated **fleet incident dashboard** (pre-seeded with a sample incident history), then scrub the `sample_drive` fixture in your browser. It ships a [5-minute demo script](https://github.com/mukul-07/missiondebug-demos/blob/main/docs/DEMO-SCRIPT.md) for walking someone through it.
 
-## Try it locally (5 minutes)
-
-You need Ubuntu 22.04 (or 24.04), ROS 2 Humble (or Jazzy), Python 3.10+, Node 20+, pnpm 9+, and `tmux`.
-
-```bash
-git clone https://github.com/mukul-07/missiondebug.git
-cd missiondebug
-make install
-
-source /opt/ros/humble/setup.bash
-MD_FIXTURES=1 make dev
-```
-
-Open <http://localhost:5173>. The session list will already contain a `sample_drive` fixture — click it, scrub the timeline.
-
-The fixture is 30 seconds long with a deliberate stall (8–14s) and a 0.8m path deviation (14–22s). Watch the velocity chart drop, the orange dot freeze, then drift off the green line.
-
----
-
 ## Install on a real robot
 
 **Via the apt repository** (recommended — `apt upgrade` picks up new versions):
@@ -144,6 +125,8 @@ That's it. All three start automatically and run at boot:
 | (web — static files served by backend) | — | UI at `http://<robot>:8000` |
 
 Browse to `http://<robot>:8000` from any machine on the network. No nginx, no separate web service, no proxy.
+
+Working on MissionDebug itself? [CONTRIBUTING.md](./CONTRIBUTING.md) covers running everything from source (`make install` / `make dev`, fixtures included).
 
 ---
 
