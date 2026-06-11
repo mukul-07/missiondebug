@@ -13,9 +13,6 @@ name: Release .debs
 on:
   push:
     tags: ["v*"]
-    # TEMPORARY: verification trigger for the packaging branch; remove
-    # before merging to main.
-    branches: ["deb-release"]
   workflow_dispatch:
 
 permissions:
