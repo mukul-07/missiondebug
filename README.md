@@ -94,7 +94,21 @@ The fixture is 30 seconds long with a deliberate stall (8–14s) and a 0.8m path
 
 ## Install on a real robot
 
-Build the three `.deb`s (Linux only):
+Grab the prebuilt `.deb`s from the [latest release](https://github.com/mukul-07/missiondebug/releases/latest). Pick the pair matching your robot's OS — `ubuntu22.04` for ROS 2 Humble, `ubuntu24.04` for Jazzy — and architecture (`amd64` or `arm64`; Jetson and Pi are `arm64`):
+
+```bash
+# Example: Humble robot on a Jetson (Ubuntu 22.04 arm64)
+wget https://github.com/mukul-07/missiondebug/releases/latest/download/missiondebug-agent_VERSION_ubuntu22.04_arm64.deb
+wget https://github.com/mukul-07/missiondebug/releases/latest/download/missiondebug-backend_VERSION_ubuntu22.04_arm64.deb
+wget https://github.com/mukul-07/missiondebug/releases/latest/download/missiondebug-web_VERSION_all.deb
+
+sudo apt install ./missiondebug-agent_*.deb ./missiondebug-backend_*.deb ./missiondebug-web_*.deb
+```
+
+(`apt install ./file.deb` resolves the ROS dependencies for you; plain `dpkg -i` doesn't.)
+
+<details>
+<summary>Or build the .debs from source (Linux only)</summary>
 
 ```bash
 sudo apt install fakeroot dpkg-dev python3-pip python3-venv nodejs
@@ -104,15 +118,10 @@ ls dist/
 # missiondebug-agent_1.0.0_<arch>.deb       — captures sessions
 # missiondebug-backend_1.0.0_<arch>.deb     — API + session index + retention
 # missiondebug-web_1.0.0_all.deb            — static UI (backend serves it)
+sudo apt install ./dist/*.deb
 ```
 
-Install on the target robot:
-
-```bash
-sudo dpkg -i dist/missiondebug-agent_1.0.0_<arch>.deb
-sudo dpkg -i dist/missiondebug-backend_1.0.0_<arch>.deb
-sudo dpkg -i dist/missiondebug-web_1.0.0_all.deb
-```
+</details>
 
 That's it. All three start automatically and run at boot:
 
