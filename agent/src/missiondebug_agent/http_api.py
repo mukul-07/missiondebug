@@ -7,6 +7,8 @@ new MCAP file. Adds GET /healthz for liveness.
 from __future__ import annotations
 
 import logging
+import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
@@ -40,6 +42,43 @@ class SaveResponse(BaseModel):
     summary: str | None = None
 
 
+def _trigger_from_label(label: str | None) -> str:
+    """Classify a capture's trigger from its save label.
+
+    Detectors save with `anomaly:*` labels (e.g. "anomaly:stall"); the
+    portal "Save buffer now" uses "transitive:*"; manual API saves pass
+    null or arbitrary text. Anomaly labels are returned verbatim so a UI
+    can show the specific detector; everything else is "manual".
+    """
+    if label and label.startswith("anomaly:"):
+        return label
+    return "manual"
+
+
+class LastSessionCache:
+    """Thread-safe holder for the most recent SaveResponse, any trigger.
+
+    `save_now` runs on two threads — the uvicorn request thread (manual
+    POST /sessions/save) and the rclpy spin thread (detector callbacks) —
+    so reads/writes are lock-guarded. Read by GET /sessions/last. Holds
+    only the latest capture; the agent keeps no history across restarts.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._last: SaveResponse | None = None
+        self._saved_at_ms: int | None = None
+
+    def set(self, resp: SaveResponse) -> None:
+        with self._lock:
+            self._last = resp
+            self._saved_at_ms = int(time.time() * 1000)
+
+    def get(self) -> tuple[SaveResponse | None, int | None]:
+        with self._lock:
+            return self._last, self._saved_at_ms
+
+
 def _filename(robot_id: str) -> str:
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     return f"{robot_id}_{ts}.mcap"
@@ -53,6 +92,7 @@ def save_now(
     schema_loader: Callable[[str], str] | None = None,
     hub_client: "HubClient | None" = None,
     s3_uploader: "S3Uploader | None" = None,
+    last_cache: "LastSessionCache | None" = None,
 ) -> SaveResponse:
     """Flush the ring buffer to a new MCAP file. Returns SaveResponse.
 
@@ -128,7 +168,7 @@ def save_now(
             payload["mcap_url"] = s3_url
         hub_client.report_session(payload)
 
-    return SaveResponse(
+    resp = SaveResponse(
         session_id=meta.session_id,
         path=meta.path,
         duration_s=meta.duration_ns / 1e9,
@@ -138,6 +178,13 @@ def save_now(
         summary=summary,
     )
 
+    # Record the most recent capture (any trigger) for GET /sessions/last,
+    # which the Transitive shim polls to surface anomaly captures.
+    if last_cache is not None:
+        last_cache.set(resp)
+
+    return resp
+
 
 def build_app(
     config: AgentConfig,
@@ -146,6 +193,7 @@ def build_app(
     schema_loader: Callable[[str], str] | None = None,
     hub_client: "HubClient | None" = None,
     s3_uploader: "S3Uploader | None" = None,
+    last_cache: "LastSessionCache | None" = None,
 ) -> FastAPI:
     app = FastAPI(
         title="MissionDebug Agent",
@@ -190,6 +238,33 @@ def build_app(
             schema_loader=schema_loader,
             hub_client=hub_client,
             s3_uploader=s3_uploader,
+            last_cache=last_cache,
         )
+
+    @app.get(
+        "/sessions/last",
+        tags=["capture"],
+        summary="Metadata of the most recent capture (any trigger)",
+    )
+    def last_session():
+        """Return the most recent capture's metadata plus `trigger`
+        (`manual` or `anomaly:*`) and `saved_at_ms` (epoch millis).
+
+        404 if nothing has been captured since the agent started — the
+        agent keeps no session history across restarts. This endpoint is
+        additive; older clients that don't call it are unaffected.
+        """
+        resp, saved_at_ms = last_cache.get() if last_cache else (None, None)
+        if resp is None:
+            raise HTTPException(status_code=404, detail="no capture yet")
+        return {
+            "session_id": resp.session_id,
+            "saved_at_ms": saved_at_ms,
+            "label": resp.label,
+            "trigger": _trigger_from_label(resp.label),
+            "duration_s": resp.duration_s,
+            "topic_count": len(resp.topics),
+            "size_bytes": resp.size_bytes,
+        }
 
     return app

@@ -16,7 +16,7 @@ from .detectors.from_config import RuleAnomaly, RuleEngine
 from .detectors.path_deviation import PathDeviationAnomaly, PathDeviationDetector
 from .detectors.stall import StallAnomaly, StallDetector
 from .detectors.topic_dropout import DropoutAnomaly, TopicDropoutDetector
-from .http_api import build_app, save_now
+from .http_api import LastSessionCache, build_app, save_now
 from .hub_client import HubClient, HubClientConfig
 from .ring_buffer import RingBuffer
 # S3Uploader imported lazily inside main() so the boto3 dependency only
@@ -25,7 +25,7 @@ from .ring_buffer import RingBuffer
 
 # Bumped per release; reported to the hub in every heartbeat so fleet
 # operators can spot agents lagging behind on rollouts.
-AGENT_VERSION = "0.1.0"
+AGENT_VERSION = "0.2.0"
 
 log = logging.getLogger("missiondebug_agent")
 
@@ -106,7 +106,15 @@ def main() -> None:
                 "Sessions will only live on local disk."
             )
 
-    app = build_app(config, ring, hub_client=hub_client, s3_uploader=s3_uploader)
+    # Cache of the most recent capture (any trigger), served by
+    # GET /sessions/last so the Transitive shim can surface anomaly
+    # captures in the portal. Shared by build_app and every save_now call.
+    last_cache = LastSessionCache()
+
+    app = build_app(
+        config, ring,
+        hub_client=hub_client, s3_uploader=s3_uploader, last_cache=last_cache,
+    )
 
     # Multiple detectors may want callbacks on the same topic (e.g. /tf used
     # by path-deviation AND a config rule). Stack them per topic and present
@@ -122,7 +130,7 @@ def main() -> None:
     def on_stall(_a: StallAnomaly) -> None:
         log.info("Auto-saving session due to stall anomaly")
         try:
-            r = save_now(config, ring, label="anomaly:stall", hub_client=hub_client, s3_uploader=s3_uploader)
+            r = save_now(config, ring, label="anomaly:stall", hub_client=hub_client, s3_uploader=s3_uploader, last_cache=last_cache)
             log.info("Auto-saved %s (%.2fs)", r.session_id, r.duration_s)
         except Exception:
             log.exception("Auto-save failed (stall)")
@@ -151,7 +159,7 @@ def main() -> None:
         def on_path_deviation(a: PathDeviationAnomaly) -> None:
             log.info("Auto-saving session due to path-deviation anomaly")
             try:
-                r = save_now(config, ring, label="anomaly:path-deviation", hub_client=hub_client, s3_uploader=s3_uploader)
+                r = save_now(config, ring, label="anomaly:path-deviation", hub_client=hub_client, s3_uploader=s3_uploader, last_cache=last_cache)
                 log.info("Auto-saved %s (%.2fs, drift %.2fm)",
                          r.session_id, r.duration_s, a.distance_m)
             except Exception:
@@ -192,7 +200,7 @@ def main() -> None:
             label = f"anomaly:{a.name}"
             log.info("Auto-saving session: rule %s", a.name)
             try:
-                r = save_now(config, ring, label=label, hub_client=hub_client, s3_uploader=s3_uploader)
+                r = save_now(config, ring, label=label, hub_client=hub_client, s3_uploader=s3_uploader, last_cache=last_cache)
                 log.info("Auto-saved %s (%.2fs, matched=%r)",
                          r.session_id, r.duration_s, a.matched_value)
             except Exception:
@@ -217,7 +225,7 @@ def main() -> None:
         def on_dropout(a: DropoutAnomaly) -> None:
             log.info("Auto-saving session: dropout on %s", a.topic)
             try:
-                r = save_now(config, ring, label=f"anomaly:{a.name}", hub_client=hub_client, s3_uploader=s3_uploader)
+                r = save_now(config, ring, label=f"anomaly:{a.name}", hub_client=hub_client, s3_uploader=s3_uploader, last_cache=last_cache)
                 log.info("Auto-saved %s (%.2fs, silence %.2fs)",
                          r.session_id, r.duration_s, a.silence_ns / 1e9)
             except Exception:
