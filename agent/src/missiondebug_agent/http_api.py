@@ -201,9 +201,9 @@ def build_app(
             "Local control plane for the agent. The agent runs on the robot, "
             "maintains a 60s rolling buffer of selected ROS 2 topics, and "
             "writes an MCAP file when a detector fires or when this API is "
-            "called. Bind to loopback only — there is no authentication."
+            "called. Bind to loopback only. There is no authentication."
         ),
-        version="0.1.0",
+        version="0.2.0",
         license_info={"name": "MIT", "url": "https://github.com/mukul-07/missiondebug/blob/main/LICENSE"},
         contact={"name": "MissionDebug", "url": "https://github.com/mukul-07/missiondebug"},
         openapi_tags=[
