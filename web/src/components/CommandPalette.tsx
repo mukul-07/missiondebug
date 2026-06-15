@@ -116,6 +116,16 @@ export function CommandPalette() {
                 <div>Sessions</div>
                 <div className="text-xs text-muted">All captured sessions · /</div>
               </Command.Item>
+              <Command.Item
+                value="pages ask ai incident agent natural language question history"
+                onSelect={closeAnd(() => navigate("/ask"))}
+                className="px-2 py-1.5 rounded text-sm text-text hover:bg-bg cursor-pointer data-[selected=true]:bg-bg"
+              >
+                <div>Ask AI</div>
+                <div className="text-xs text-muted">
+                  Ask the incident history in plain English · /ask
+                </div>
+              </Command.Item>
             </Command.Group>
 
             {sessions.length > 0 ? (

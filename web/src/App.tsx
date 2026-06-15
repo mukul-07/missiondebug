@@ -4,7 +4,7 @@ import { SessionDetail } from "./components/SessionDetail";
 import { AgentHealth } from "./components/AgentHealth";
 import { FleetIncidents } from "./components/FleetIncidents";
 import { CommandPalette } from "./components/CommandPalette";
-import { AskAi } from "./components/AskAi";
+import { AskAiPage } from "./components/AskAiPage";
 import { ErrorBoundary } from "./components/ui/ErrorBoundary";
 import { ThemeToggle } from "./components/ui/ThemeToggle";
 
@@ -41,7 +41,14 @@ export default function App() {
           >
             Agents
           </NavLink>
-          <AskAi />
+          <NavLink
+            to="/ask"
+            className={({ isActive }) =>
+              isActive ? "text-accent" : "text-accent/80 hover:text-accent"
+            }
+          >
+            ✨ Ask AI
+          </NavLink>
         </nav>
         <div className="ml-auto flex items-center gap-2">
           <span
@@ -60,6 +67,7 @@ export default function App() {
             <Route path="/sessions/:id" element={<SessionDetail />} />
             <Route path="/fleet/incidents" element={<FleetIncidents />} />
             <Route path="/fleet/agents" element={<AgentHealth />} />
+            <Route path="/ask" element={<AskAiPage />} />
           </Routes>
         </ErrorBoundary>
       </main>
