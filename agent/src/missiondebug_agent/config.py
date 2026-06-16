@@ -18,9 +18,17 @@ class TopicConfig(BaseModel):
 
 
 class StallConfig(BaseModel):
-    velocity_threshold: float = 0.01
+    # A stall is "commanded to move but not actually moving". We compare the
+    # commanded velocity (/cmd_vel) against the actual velocity from odometry
+    # (motion_topic), so a robot that is legitimately parked (no command to
+    # move) does NOT trigger. The motion_topic must be in `topics` (captured)
+    # for the comparison to run; otherwise stall stays silent (no false fires).
+    velocity_threshold: float = 0.01        # commanded: is the robot told to move?
+    motion_threshold: float | None = None   # actual: is it moving? (defaults to velocity_threshold)
+    motion_topic: str = "/odom"             # actual-velocity source (nav_msgs/Odometry)
     duration_seconds: float = 5.0
     cooldown_seconds: float = 30.0
+    stale_seconds: float = 1.0              # ignore cmd/motion readings older than this
 
 
 class PathDeviationConfig(BaseModel):

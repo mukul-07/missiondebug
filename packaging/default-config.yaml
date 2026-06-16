@@ -8,6 +8,7 @@ buffer_seconds: 60
 topics:
   - { name: "/tf", type: "tf2_msgs/msg/TFMessage" }
   - { name: "/cmd_vel", type: "geometry_msgs/msg/Twist" }
+  - { name: "/odom", type: "nav_msgs/msg/Odometry" }
   - { name: "/camera/image_raw/compressed", type: "sensor_msgs/msg/CompressedImage" }
   - { name: "/plan", type: "nav_msgs/msg/Path" }
 
@@ -19,10 +20,14 @@ http_host: "127.0.0.1"
 http_port: 7000
 
 anomaly:
+  # Stall = commanded to move (/cmd_vel) but not actually moving (motion_topic,
+  # default /odom). Capture /odom (above) for this to work; a robot that is
+  # legitimately parked (no move command) will not trigger.
   stall:
     velocity_threshold: 0.01
     duration_seconds: 5.0
     cooldown_seconds: 30.0
+    motion_topic: "/odom"
   path_deviation:
     threshold_meters: 0.5
     duration_seconds: 2.0

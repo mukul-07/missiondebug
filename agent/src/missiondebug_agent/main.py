@@ -25,7 +25,7 @@ from .ring_buffer import RingBuffer
 
 # Bumped per release; reported to the hub in every heartbeat so fleet
 # operators can spot agents lagging behind on rollouts.
-AGENT_VERSION = "0.2.0"
+AGENT_VERSION = "0.3.0"
 
 log = logging.getLogger("missiondebug_agent")
 
@@ -140,6 +140,8 @@ def main() -> None:
         duration_seconds=stall_cfg.duration_seconds,
         cooldown_seconds=stall_cfg.cooldown_seconds,
         on_stall=on_stall,
+        motion_threshold=stall_cfg.motion_threshold,
+        stale_seconds=stall_cfg.stale_seconds,
     )
 
     def on_cmd_vel(msg, ts_ns: int) -> None:
@@ -149,9 +151,28 @@ def main() -> None:
         except AttributeError:
             log.exception("Unexpected /cmd_vel payload shape")
             raise
-        stall_detector.update(lin, ang, ts_ns)
+        stall_detector.update_cmd(lin, ang, ts_ns)
 
     add_cb("/cmd_vel", on_cmd_vel)
+
+    # Actual velocity from odometry (nav_msgs/Odometry), so a stall is only
+    # "commanded to move but not moving", never a legitimately parked robot.
+    def on_odom(msg, ts_ns: int) -> None:
+        try:
+            t = msg.twist.twist
+            lin = (float(t.linear.x) ** 2 + float(t.linear.y) ** 2) ** 0.5
+            ang = abs(float(t.angular.z))
+        except AttributeError:
+            log.exception("Unexpected odometry payload shape on %s", stall_cfg.motion_topic)
+            return
+        stall_detector.update_motion(lin, ang, ts_ns)
+
+    add_cb(stall_cfg.motion_topic, on_odom)
+    if stall_cfg.motion_topic not in {t.name for t in config.topics}:
+        log.warning(
+            "Stall detector needs an actual-velocity source: add %s to topics "
+            "(captured), or stall will stay silent.", stall_cfg.motion_topic,
+        )
 
     # ---------- Path-deviation detector (opt-in) ----------
     pd_cfg = config.anomaly.path_deviation
