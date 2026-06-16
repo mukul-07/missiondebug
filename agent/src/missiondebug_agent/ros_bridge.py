@@ -70,7 +70,19 @@ class RosBridge:
             self._subscribe(topic)
 
     def _subscribe(self, topic: TopicConfig) -> None:
-        msg_cls = _resolve_msg_type(topic.type)
+        try:
+            msg_cls = _resolve_msg_type(topic.type)
+        except (ModuleNotFoundError, AttributeError, ValueError) as err:
+            # One unresolvable topic must not take down the whole agent. This
+            # happens when a message package isn't installed on the robot (e.g.
+            # a manipulator preset's moveit_msgs on a robot without MoveIt).
+            # Skip it with a warning; capture everything else and stay up.
+            log.warning(
+                "Skipping topic %s: cannot resolve message type %r (%s). "
+                "Is the message package installed on this robot?",
+                topic.name, topic.type, err,
+            )
+            return
         cb_for_topic = self._callbacks.get(topic.name)
         divisor = topic.rate_divisor
 
