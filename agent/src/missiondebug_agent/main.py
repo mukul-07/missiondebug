@@ -12,6 +12,7 @@ from pathlib import Path
 import uvicorn
 
 from .config import AgentConfig
+from .detectors.compare import CompareAnomaly, CompareEngine
 from .detectors.from_config import RuleAnomaly, RuleEngine
 from .detectors.path_deviation import PathDeviationAnomaly, PathDeviationDetector
 from .detectors.stall import StallAnomaly, StallDetector
@@ -25,7 +26,7 @@ from .ring_buffer import RingBuffer
 
 # Bumped per release; reported to the hub in every heartbeat so fleet
 # operators can spot agents lagging behind on rollouts.
-AGENT_VERSION = "0.3.0"
+AGENT_VERSION = "0.4.0"
 
 log = logging.getLogger("missiondebug_agent")
 
@@ -238,6 +239,39 @@ def main() -> None:
             add_cb(topic_name, make_cb(topic_name))
 
         log.info("Loaded %d config-driven rule(s)", len(rule_cfgs))
+
+    # ---------- Cross-topic comparison rules (v2) ----------
+    compare_cfgs = config.anomaly.compare_rules
+    if compare_cfgs:
+        def on_compare_anomaly(a: CompareAnomaly) -> None:
+            log.info("Auto-saving session: compare rule %s", a.name)
+            try:
+                r = save_now(config, ring, label=f"anomaly:{a.name}", hub_client=hub_client, s3_uploader=s3_uploader, last_cache=last_cache)
+                log.info("Auto-saved %s (%.2fs, a=%r b=%r)",
+                         r.session_id, r.duration_s, a.a_value, a.b_value)
+            except Exception:
+                log.exception("Auto-save failed (compare %s)", a.name)
+
+        compare_engine = CompareEngine(compare_cfgs, on_anomaly=on_compare_anomaly)
+
+        for topic_name in compare_engine.topics:
+            # Bind topic_name into the closure to avoid late-binding bug.
+            def make_compare_cb(t):
+                def cb(msg, ts_ns):
+                    compare_engine.update(t, msg, ts_ns)
+                return cb
+            add_cb(topic_name, make_compare_cb(topic_name))
+
+        captured = {t.name for t in config.topics}
+        for r in compare_cfgs:
+            for operand in (r.a, r.b):
+                if operand.topic not in captured:
+                    log.warning(
+                        "compare rule %r references %s which is not captured; "
+                        "add it to topics or the rule stays silent.",
+                        r.name, operand.topic,
+                    )
+        log.info("Loaded %d compare rule(s)", len(compare_cfgs))
 
     # ---------- Topic-dropout detector (v1.5) ----------
     dropout_cfgs = config.anomaly.topic_dropout

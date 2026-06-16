@@ -96,12 +96,49 @@ class BatteryLowConfig(BaseModel):
     name: str = "battery_low"
 
 
+class CompareOperand(BaseModel):
+    topic: str
+    field: str  # dot-path, e.g. "linear.x" or "twist.twist.linear.x" or "data"
+
+
+class CompareRuleConfig(BaseModel):
+    """Cross-topic comparison (v2). Compares a field on topic A against a field
+    on topic B and fires when they disagree for >= duration_seconds. Both
+    operands must be fresh (seen within stale_seconds); a stale signal never
+    fires (that is a dropout, not a divergence).
+
+    op:
+      a_active_b_idle -> |A| >= threshold AND |B| < threshold ("commanded to
+                         act but nothing is happening": told-to-move-not-moving,
+                         a hardcoded-stall-style check for any pair of signals)
+      diverge_gt      -> |A - B| > threshold ("tracking error": commanded vs
+                         actual position/velocity drift apart)
+    """
+
+    name: str
+    a: CompareOperand
+    b: CompareOperand
+    op: str
+    threshold: float
+    duration_seconds: float = Field(default=0.0, ge=0.0)
+    cooldown_seconds: float = Field(default=30.0, ge=0.0)
+    stale_seconds: float = Field(default=1.0, gt=0.0)
+
+    @model_validator(mode="after")
+    def _check_op(self) -> "CompareRuleConfig":
+        valid = {"a_active_b_idle", "diverge_gt"}
+        if self.op not in valid:
+            raise ValueError(f"op must be one of {sorted(valid)}, got {self.op!r}")
+        return self
+
+
 class AnomalyConfig(BaseModel):
     stall: StallConfig = StallConfig()
     path_deviation: PathDeviationConfig | None = None  # opt-in for v1
     rules: list[RuleConfig] = Field(default_factory=list)  # v1.5
     topic_dropout: list[TopicDropoutConfig] = Field(default_factory=list)  # v1.5
     battery_low: BatteryLowConfig | None = None  # v1.5
+    compare_rules: list[CompareRuleConfig] = Field(default_factory=list)  # v2
 
     def all_rules(self) -> list[RuleConfig]:
         """rules + auto-generated rules from convenience configs (battery_low)."""
