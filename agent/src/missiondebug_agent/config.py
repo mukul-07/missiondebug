@@ -227,6 +227,11 @@ class AgentConfig(BaseModel):
     output_dir: str = "./sessions"
     http_host: str = "127.0.0.1"
     http_port: int = 7000
+    # When set, serve the local control API on this Unix domain socket instead
+    # of http_host:http_port. A socket has no port to allocate or collide with,
+    # so the supervising shim uses this; unset keeps the host:port behavior for
+    # standalone installs.
+    http_uds: str | None = None
     anomaly: AnomalyConfig = AnomalyConfig()
     # v2 (fleet): optional hub registration. Empty = standalone v1.5 mode.
     hub: HubConfig = HubConfig()

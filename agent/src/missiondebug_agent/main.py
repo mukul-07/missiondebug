@@ -26,7 +26,7 @@ from .ring_buffer import RingBuffer
 
 # Bumped per release; reported to the hub in every heartbeat so fleet
 # operators can spot agents lagging behind on rollouts.
-AGENT_VERSION = "0.4.1"
+AGENT_VERSION = "0.5.0"
 
 log = logging.getLogger("missiondebug_agent")
 
@@ -77,7 +77,10 @@ def main() -> None:
     # the time the first save fires; stopped in the finally block below.
     hub_client: HubClient | None = None
     if config.hub.url:
-        agent_url = config.hub.agent_url or f"http://{config.http_host}:{config.http_port}"
+        # With a Unix socket there is no host:port URL the hub could reach, so
+        # only an explicit hub.agent_url applies (the hub-fetch path is separate).
+        agent_url = config.hub.agent_url or (
+            "" if config.http_uds else f"http://{config.http_host}:{config.http_port}")
         hub_client = HubClient(HubClientConfig(
             hub_url=config.hub.url,
             robot_id=config.robot_id,
@@ -316,9 +319,14 @@ def main() -> None:
     spin_thread.start()
 
     try:
-        uvicorn.run(
-            app, host=config.http_host, port=config.http_port, log_level="info"
-        )
+        if config.http_uds:
+            # Serve on a Unix domain socket (no port to allocate or collide).
+            log.info("Serving control API on socket %s", config.http_uds)
+            uvicorn.run(app, uds=config.http_uds, log_level="info")
+        else:
+            uvicorn.run(
+                app, host=config.http_host, port=config.http_port, log_level="info"
+            )
     finally:
         if dropout_detector is not None:
             dropout_detector.stop()
