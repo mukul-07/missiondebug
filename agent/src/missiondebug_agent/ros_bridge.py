@@ -87,73 +87,45 @@ class RosBridge:
         divisor = topic.rate_divisor
         qos = self._qos_for(topic)
 
-        # CPU win: when a topic is only being buffered (no anomaly detector reads
-        # its fields), subscribe with raw=True so rclpy hands us the serialized
-        # CDR bytes directly. We skip the deserialize-into-a-Python-object that
-        # rclpy would otherwise do AND the re-serialize we used to do to get bytes
-        # back — a full round trip eliminated on every message. High-rate streams
-        # (camera, lidar) are almost always buffer-only, so they get this path.
-        # Topics that feed a detector (cmd_vel, odom, battery, ...) still need the
-        # typed message for field access, so they stay on the deserialized path;
-        # those are low-rate, so the cost there is small.
-        if cb_for_topic is None:
-            def cb(
-                serialized,
-                _topic_name=topic.name,
-                _divisor=divisor,
-            ):
-                if not self._rate_limiter.should_keep(_topic_name, _divisor):
-                    return
-                try:
-                    self._buffer.append(
-                        BufferedMessage(
-                            timestamp_ns=time.monotonic_ns(),
-                            wall_ns=time.time_ns(),
-                            topic=_topic_name,
-                            payload=bytes(serialized),
-                        )
+        # We serialize the typed message straight to bytes for the buffer. A
+        # raw=True subscription (skipping rclpy's deserialize) was tried in 0.5.1
+        # but measured no agent-CPU win on the robot — bytes(SerializedMessage)
+        # copies the payload, offsetting the saved deserialize, and the DDS
+        # receive cost dominates either way. The real per-topic CPU levers are
+        # rate_divisor (drop high-rate frames) and best_effort QoS (see
+        # _qos_for), both applied here.
+        def cb(
+            msg,
+            _topic_name=topic.name,
+            _user_cb=cb_for_topic,
+            _divisor=divisor,
+        ):
+            if not self._rate_limiter.should_keep(_topic_name, _divisor):
+                return
+            try:
+                payload = self._serialize(msg)
+                ts = time.monotonic_ns()
+                self._buffer.append(
+                    BufferedMessage(
+                        timestamp_ns=ts,
+                        wall_ns=time.time_ns(),
+                        topic=_topic_name,
+                        payload=payload,
                     )
-                except Exception:
-                    log.exception("Failed to buffer message on %s", _topic_name)
-                    raise
-
-            sub = self._node.create_subscription(
-                msg_cls, topic.name, cb, qos, raw=True
-            )
-        else:
-            def cb(
-                msg,
-                _topic_name=topic.name,
-                _user_cb=cb_for_topic,
-                _divisor=divisor,
-            ):
-                if not self._rate_limiter.should_keep(_topic_name, _divisor):
-                    return
-                try:
-                    payload = self._serialize(msg)
-                    ts = time.monotonic_ns()
-                    self._buffer.append(
-                        BufferedMessage(
-                            timestamp_ns=ts,
-                            wall_ns=time.time_ns(),
-                            topic=_topic_name,
-                            payload=payload,
-                        )
-                    )
+                )
+                if _user_cb is not None:
                     _user_cb(msg, ts)
-                except Exception:
-                    log.exception("Failed to buffer message on %s", _topic_name)
-                    raise
+            except Exception:
+                log.exception("Failed to buffer message on %s", _topic_name)
+                raise
 
-            sub = self._node.create_subscription(msg_cls, topic.name, cb, qos)
-
+        sub = self._node.create_subscription(msg_cls, topic.name, cb, qos)
         self._subs.append(sub)
-        raw_note = "" if cb_for_topic is not None else ", raw"
         rate_note = f", every {divisor}th" if divisor > 1 else ""
         ring_note = f", ring={topic.ring_seconds}s" if topic.ring_seconds else ""
         log.info(
-            "Subscribed to %s [%s]%s%s%s",
-            topic.name, topic.type, raw_note, rate_note, ring_note,
+            "Subscribed to %s [%s]%s%s",
+            topic.name, topic.type, rate_note, ring_note,
         )
 
     def _qos_for(self, topic: TopicConfig):
