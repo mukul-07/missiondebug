@@ -27,3 +27,27 @@ def test_subscribe_skips_unresolvable_topic():
     # malformed type string: also skipped, not raised
     bridge._subscribe(TopicConfig(name="/y", type="not-a-valid-type"))
     assert bridge._subs == []  # both skipped, no subscription, no crash
+
+
+def test_qos_default_is_int_depth():
+    # The default (no reliability set) path returns a plain int depth, which
+    # rclpy treats as KEEP_LAST with default reliability. No rclpy import needed,
+    # so this is the testable path off-robot.
+    bridge = RosBridge.__new__(RosBridge)
+    assert bridge._qos_for(TopicConfig(name="/a", type="std_msgs/msg/String")) == 10
+    assert bridge._qos_for(
+        TopicConfig(name="/a", type="std_msgs/msg/String", queue_depth=3)
+    ) == 3
+    # reliability="reliable" is still the default int path (no special profile)
+    assert bridge._qos_for(
+        TopicConfig(name="/a", type="std_msgs/msg/String", reliability="reliable")
+    ) == 10
+
+
+def test_topic_config_cpu_defaults_preserve_behavior():
+    # New CPU fields default to the prior behavior: depth 10, no explicit
+    # reliability (so the int-depth path), keep-all rate.
+    t = TopicConfig(name="/a", type="std_msgs/msg/String")
+    assert t.queue_depth == 10
+    assert t.reliability is None
+    assert t.rate_divisor == 1

@@ -15,6 +15,12 @@ class TopicConfig(BaseModel):
     # v1.5: per-topic capture controls. Defaults preserve v1 behavior.
     rate_divisor: int = Field(default=1, ge=1)  # keep every Nth message; 1 = all
     ring_seconds: float | None = None             # None = use global buffer_seconds
+    # v2.1 CPU controls. Defaults preserve prior behavior (KEEP_LAST depth 10,
+    # default reliability). Set reliability="best_effort" for high-rate sensor
+    # streams (camera, lidar) to match how they are published and avoid the DDS
+    # retransmit bookkeeping a RELIABLE subscriber forces.
+    reliability: str | None = None               # None | "reliable" | "best_effort"
+    queue_depth: int = Field(default=10, ge=1)   # KEEP_LAST history depth
 
 
 class StallConfig(BaseModel):

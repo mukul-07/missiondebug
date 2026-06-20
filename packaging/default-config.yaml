@@ -5,11 +5,14 @@ robot_id: "robot-001"
 buffer_seconds: 60
 
 # ROS 2 topics to capture. Comment out anything your robot doesn't publish.
+# High-rate sensor streams (camera, lidar) should set reliability: best_effort
+# to match how they are published and keep CPU/DDS overhead low; add
+# rate_divisor: N to keep only every Nth message on very high-rate topics.
 topics:
   - { name: "/tf", type: "tf2_msgs/msg/TFMessage" }
   - { name: "/cmd_vel", type: "geometry_msgs/msg/Twist" }
   - { name: "/odom", type: "nav_msgs/msg/Odometry" }
-  - { name: "/camera/image_raw/compressed", type: "sensor_msgs/msg/CompressedImage" }
+  - { name: "/camera/image_raw/compressed", type: "sensor_msgs/msg/CompressedImage", reliability: "best_effort" }
   - { name: "/plan", type: "nav_msgs/msg/Path" }
 
 # Where MCAP files are written. Owned by the missiondebug system user.

@@ -85,37 +85,98 @@ class RosBridge:
             return
         cb_for_topic = self._callbacks.get(topic.name)
         divisor = topic.rate_divisor
+        qos = self._qos_for(topic)
 
-        def cb(
-            msg,
-            _topic_name=topic.name,
-            _user_cb=cb_for_topic,
-            _divisor=divisor,
-        ):
-            if not self._rate_limiter.should_keep(_topic_name, _divisor):
-                return
-            try:
-                payload = self._serialize(msg)
-                ts = time.monotonic_ns()
-                self._buffer.append(
-                    BufferedMessage(
-                        timestamp_ns=ts,
-                        wall_ns=time.time_ns(),
-                        topic=_topic_name,
-                        payload=payload,
+        # CPU win: when a topic is only being buffered (no anomaly detector reads
+        # its fields), subscribe with raw=True so rclpy hands us the serialized
+        # CDR bytes directly. We skip the deserialize-into-a-Python-object that
+        # rclpy would otherwise do AND the re-serialize we used to do to get bytes
+        # back — a full round trip eliminated on every message. High-rate streams
+        # (camera, lidar) are almost always buffer-only, so they get this path.
+        # Topics that feed a detector (cmd_vel, odom, battery, ...) still need the
+        # typed message for field access, so they stay on the deserialized path;
+        # those are low-rate, so the cost there is small.
+        if cb_for_topic is None:
+            def cb(
+                serialized,
+                _topic_name=topic.name,
+                _divisor=divisor,
+            ):
+                if not self._rate_limiter.should_keep(_topic_name, _divisor):
+                    return
+                try:
+                    self._buffer.append(
+                        BufferedMessage(
+                            timestamp_ns=time.monotonic_ns(),
+                            wall_ns=time.time_ns(),
+                            topic=_topic_name,
+                            payload=bytes(serialized),
+                        )
                     )
-                )
-                if _user_cb is not None:
-                    _user_cb(msg, ts)
-            except Exception:
-                log.exception("Failed to buffer message on %s", _topic_name)
-                raise
+                except Exception:
+                    log.exception("Failed to buffer message on %s", _topic_name)
+                    raise
 
-        sub = self._node.create_subscription(msg_cls, topic.name, cb, 10)
+            sub = self._node.create_subscription(
+                msg_cls, topic.name, cb, qos, raw=True
+            )
+        else:
+            def cb(
+                msg,
+                _topic_name=topic.name,
+                _user_cb=cb_for_topic,
+                _divisor=divisor,
+            ):
+                if not self._rate_limiter.should_keep(_topic_name, _divisor):
+                    return
+                try:
+                    payload = self._serialize(msg)
+                    ts = time.monotonic_ns()
+                    self._buffer.append(
+                        BufferedMessage(
+                            timestamp_ns=ts,
+                            wall_ns=time.time_ns(),
+                            topic=_topic_name,
+                            payload=payload,
+                        )
+                    )
+                    _user_cb(msg, ts)
+                except Exception:
+                    log.exception("Failed to buffer message on %s", _topic_name)
+                    raise
+
+            sub = self._node.create_subscription(msg_cls, topic.name, cb, qos)
+
         self._subs.append(sub)
+        raw_note = "" if cb_for_topic is not None else ", raw"
         rate_note = f", every {divisor}th" if divisor > 1 else ""
         ring_note = f", ring={topic.ring_seconds}s" if topic.ring_seconds else ""
-        log.info("Subscribed to %s [%s]%s%s", topic.name, topic.type, rate_note, ring_note)
+        log.info(
+            "Subscribed to %s [%s]%s%s%s",
+            topic.name, topic.type, raw_note, rate_note, ring_note,
+        )
+
+    def _qos_for(self, topic: TopicConfig):
+        """Build the QoS profile for a topic.
+
+        Defaults to KEEP_LAST depth 10 (unchanged from before). When a topic
+        sets reliability="best_effort", we use a BEST_EFFORT profile, which is
+        how sensor streams (camera, lidar) are typically published and avoids
+        the DDS reliability bookkeeping/retransmits that a RELIABLE subscriber
+        forces. A RELIABLE subscriber can also silently miss a BEST_EFFORT
+        publisher entirely (QoS incompatibility), so matching it is safer too.
+        """
+        depth = topic.queue_depth
+        if (topic.reliability or "").lower() == "best_effort":
+            from rclpy.qos import (
+                QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy,
+            )
+            return QoSProfile(
+                history=QoSHistoryPolicy.KEEP_LAST,
+                depth=depth,
+                reliability=QoSReliabilityPolicy.BEST_EFFORT,
+            )
+        return depth  # int = KEEP_LAST with that depth, default reliability
 
     def spin(self) -> None:
         """Blocks until shutdown."""
