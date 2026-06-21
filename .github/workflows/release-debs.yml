@@ -77,7 +77,7 @@ jobs:
         run: |
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            python3 python3-venv python3-pip dpkg-dev fakeroot \
+            bash python3 python3-venv python3-pip dpkg-dev fakeroot \
             git ca-certificates curl adduser gnupg
 
       - name: Install ROS 2 (for the C++ capture extension)
@@ -115,12 +115,15 @@ jobs:
           fi
 
       - name: Build agent + backend .debs
+        # Use bash: ROS 2 setup.bash is bash-only (the default /bin/sh = dash
+        # fails it with "Bad substitution"). build-deb.sh is also a bash script.
+        shell: bash
         env:
           MD_VERSION: ${{ steps.ver.outputs.version }}
           MD_DEB_SUFFIX: ubuntu${{ matrix.ubuntu }}
         run: |
           # Source ROS so build-capture-so.sh finds rclcpp (CMAKE_PREFIX_PATH).
-          [ -f "/opt/ros/${ROS_DISTRO}/setup.bash" ] && . "/opt/ros/${ROS_DISTRO}/setup.bash"
+          [ -f "/opt/ros/${ROS_DISTRO}/setup.bash" ] && source "/opt/ros/${ROS_DISTRO}/setup.bash"
           ./packaging/build-deb.sh agent
           ./packaging/build-deb.sh backend
 
