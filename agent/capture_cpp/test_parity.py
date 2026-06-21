@@ -30,13 +30,31 @@ TYPE = "sensor_msgs/msg/CompressedImage"
 
 def main():
     # --- start the C++ capture on the camera topic (best_effort, like the agent)
+    # Mark it a DETECTOR topic too, so we also exercise the Phase 2 Python
+    # callback (the GIL crossing) on the same stream.
     spec = mc.TopicSpec()
     spec.name = TOPIC
     spec.type = TYPE
     spec.reliability = "best_effort"
+    spec.is_detector = True
     cap = mc.Capture(topics=[spec], buffer_seconds=60.0, max_total_bytes=0)
+
+    # Phase 2: register a Python detector callback. It is invoked from the C++
+    # spin thread (which acquires the GIL for the call). Count invocations and
+    # confirm the bytes deserialize, the same data the buffer holds.
+    cb_state = {"count": 0, "last_format": None, "error": None}
+
+    def detector_cb(topic, payload, ts_ns):
+        try:
+            cb_state["count"] += 1
+            m = deserialize_message(bytes(payload), CompressedImage)
+            cb_state["last_format"] = m.format
+        except Exception as e:  # must never propagate into C++
+            cb_state["error"] = repr(e)
+
+    cap.set_detector_callback(detector_cb)
     cap.start()
-    print("C++ capture started; waiting for frames...")
+    print("C++ capture started (detector callback registered); waiting for frames...")
 
     # Give it time to receive from the running publisher.
     for _ in range(20):
@@ -74,6 +92,24 @@ def main():
         print(f"PARITY DIFF: C++ bytes ({len(payload)}) != rclpy reserialize "
               f"({len(reser)}). Investigate before trusting C++ MCAP output.")
         ok = False
+
+    # --- Phase 2: the detector callback fired from the C++ spin thread (GIL).
+    # Let a few more messages flow so the callback count is meaningful.
+    time.sleep(2.0)
+    print(f"detector callback: fired {cb_state['count']} times, "
+          f"last_format={cb_state['last_format']!r}, error={cb_state['error']}")
+    if cb_state["error"] is not None:
+        print(f"FAIL: detector callback raised: {cb_state['error']}")
+        ok = False
+    elif cb_state["count"] == 0:
+        print("FAIL: detector callback never fired (GIL/callback wiring).")
+        ok = False
+    elif cb_state["last_format"] != "jpeg":
+        print("FAIL: detector callback got wrong/garbled data.")
+        ok = False
+    else:
+        print("CALLBACK OK: detector callback fired from the C++ spin thread, "
+              "GIL-safe, bytes deserialize correctly. No deadlock, no crash.")
 
     cap.stop()
     return 0 if ok else 2

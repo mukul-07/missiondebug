@@ -60,6 +60,11 @@ struct TopicSpec {
   int queue_depth = 10;
   int rate_divisor = 1;      // keep every Nth message
   double ring_seconds = 0;   // 0 = use the global window
+  // When true, each kept message on this topic is ALSO delivered to the Python
+  // detector callback (which deserializes it to feed a detector). Only low-rate
+  // topics that feed a detector get this; high-rate buffer-only topics do not,
+  // so the hot path never crosses into Python (and never takes the GIL).
+  bool is_detector = false;
 };
 
 class TopicBuffer {
@@ -168,6 +173,10 @@ class Capture {
     return n;
   }
 
+  // Register the Python callback invoked for each kept message on a detector
+  // topic: cb(topic_name, payload_bytes, ts_ns). Set before start().
+  void set_detector_callback(py::function cb) { detector_cb_ = cb; }
+
  private:
   void subscribe(const TopicSpec& t) {
     rclcpp::QoS qos(rclcpp::KeepLast(t.queue_depth));
@@ -178,10 +187,11 @@ class Capture {
     }
     int divisor = t.rate_divisor;
     std::string name = t.name;
+    bool is_detector = t.is_detector;
     auto counter = std::make_shared<int>(0);
     auto sub = node_->create_generic_subscription(
         t.name, t.type, qos,
-        [this, name, divisor, counter](
+        [this, name, divisor, is_detector, counter](
             std::shared_ptr<rclcpp::SerializedMessage> msg) {
           if (divisor > 1) {
             int n = (*counter)++;
@@ -194,11 +204,35 @@ class Capture {
           bm.topic = name;
           bm.payload.assign(reinterpret_cast<const char*>(rcl.buffer),
                             rcl.buffer_length);
-          std::lock_guard<std::mutex> lk(mu_);
-          auto it = buffers_.find(name);
-          if (it != buffers_.end()) {
-            it->second->append(std::move(bm));
-            enforce_global_budget_locked();
+          // Keep the timestamp + a copy of the bytes for the detector callback
+          // BEFORE moving bm into the buffer (so the hot append still moves).
+          int64_t ts = bm.timestamp_ns;
+          std::string detector_bytes;
+          if (is_detector) detector_bytes = bm.payload;  // copy only for detectors
+          {
+            // Hot path: buffer the bytes under the mutex. NO GIL here, this is
+            // the per-message work that must stay pure C++.
+            std::lock_guard<std::mutex> lk(mu_);
+            auto it = buffers_.find(name);
+            if (it != buffers_.end()) {
+              it->second->append(std::move(bm));
+              enforce_global_budget_locked();
+            }
+          }
+          // Detector topics only (low-rate): deliver the bytes to Python. The
+          // spin thread holds no GIL, so acquire it for this call. High-rate
+          // buffer-only topics skip this entirely, so the GIL is never taken on
+          // the hot path. Done OUTSIDE the buffer mutex to avoid holding both.
+          if (is_detector) {
+            py::gil_scoped_acquire gil;
+            if (detector_cb_) {
+              try {
+                detector_cb_(name, py::bytes(detector_bytes), ts);
+              } catch (const py::error_already_set& e) {
+                // A Python exception in the callback must not crash capture.
+                PyErr_Clear();
+              }
+            }
           }
         });
     subs_.push_back(sub);
@@ -239,10 +273,11 @@ class Capture {
   std::thread spin_thread_;
   std::mutex mu_;
   bool spinning_ = false;
+  py::function detector_cb_;
 };
 
 PYBIND11_MODULE(missiondebug_capture, m) {
-  m.doc() = "C++ capture hot path for the MissionDebug agent (Phase 1).";
+  m.doc() = "C++ capture hot path for the MissionDebug agent (Phase 2).";
 
   py::class_<TopicSpec>(m, "TopicSpec")
       .def(py::init<>())
@@ -251,7 +286,8 @@ PYBIND11_MODULE(missiondebug_capture, m) {
       .def_readwrite("reliability", &TopicSpec::reliability)
       .def_readwrite("queue_depth", &TopicSpec::queue_depth)
       .def_readwrite("rate_divisor", &TopicSpec::rate_divisor)
-      .def_readwrite("ring_seconds", &TopicSpec::ring_seconds);
+      .def_readwrite("ring_seconds", &TopicSpec::ring_seconds)
+      .def_readwrite("is_detector", &TopicSpec::is_detector);
 
   py::class_<Capture>(m, "Capture")
       .def(py::init<std::vector<TopicSpec>, double, int64_t>(),
@@ -260,5 +296,6 @@ PYBIND11_MODULE(missiondebug_capture, m) {
       .def("start", &Capture::start)
       .def("stop", &Capture::stop)
       .def("snapshot", &Capture::snapshot)
-      .def("buffer_size", &Capture::buffer_size);
+      .def("buffer_size", &Capture::buffer_size)
+      .def("set_detector_callback", &Capture::set_detector_callback);
 }
