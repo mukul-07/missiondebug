@@ -88,10 +88,16 @@ class Capture {
       : topics_(std::move(topics)),
         default_window_ns_(static_cast<int64_t>(buffer_seconds * 1e9)),
         max_total_bytes_(max_total_bytes) {
-    if (!rclcpp::ok()) {
-      rclcpp::init(0, nullptr);
-    }
-    node_ = std::make_shared<rclcpp::Node>("missiondebug_capture");
+    // Use our OWN rclcpp context, initialized explicitly, rather than the
+    // global one. This avoids any interaction with rclpy's (Python) context
+    // when the agent also runs Python ROS code, and sidesteps the null-context
+    // guard-condition failure from rclcpp::init(0, nullptr).
+    context_ = std::make_shared<rclcpp::Context>();
+    context_->init(0, nullptr);
+    rclcpp::NodeOptions opts;
+    opts.context(context_);
+    exec_options_.context = context_;
+    node_ = std::make_shared<rclcpp::Node>("missiondebug_capture", opts);
     for (const auto& t : topics_) {
       int64_t window = t.ring_seconds > 0
                            ? static_cast<int64_t>(t.ring_seconds * 1e9)
@@ -104,15 +110,19 @@ class Capture {
   void start() {
     if (spinning_) return;
     spinning_ = true;
+    // The executor must share the node's (custom) context, so build it with
+    // exec_options_ (which carries context_) rather than default-constructing.
+    exec_ = std::make_unique<rclcpp::executors::SingleThreadedExecutor>(
+        exec_options_);
     spin_thread_ = std::thread([this]() {
-      exec_.add_node(node_);
-      exec_.spin();
+      exec_->add_node(node_);
+      exec_->spin();
     });
   }
 
   void stop() {
     if (!spinning_) return;
-    exec_.cancel();
+    if (exec_) exec_->cancel();
     if (spin_thread_.joinable()) spin_thread_.join();
     spinning_ = false;
   }
@@ -210,10 +220,12 @@ class Capture {
   std::vector<TopicSpec> topics_;
   int64_t default_window_ns_;
   int64_t max_total_bytes_;
+  std::shared_ptr<rclcpp::Context> context_;
+  rclcpp::ExecutorOptions exec_options_;
   std::shared_ptr<rclcpp::Node> node_;
   std::vector<rclcpp::GenericSubscription::SharedPtr> subs_;
   std::map<std::string, std::unique_ptr<TopicBuffer>> buffers_;
-  rclcpp::executors::SingleThreadedExecutor exec_;
+  std::unique_ptr<rclcpp::executors::SingleThreadedExecutor> exec_;
   std::thread spin_thread_;
   std::mutex mu_;
   bool spinning_ = false;
