@@ -127,6 +127,16 @@ class Capture {
     spinning_ = false;
   }
 
+  // Always stop the spin thread before destruction, else ~std::thread on a
+  // still-joinable thread calls std::terminate() (the "terminate called
+  // without an active exception" / Aborted crash). Safe if never started.
+  ~Capture() {
+    try {
+      stop();
+    } catch (...) {
+    }
+  }
+
   // Snapshot: all buffered messages across all topics, sorted by timestamp.
   // Returned to Python as a list of (topic, ts_ns, wall_ns, bytes).
   std::vector<py::tuple> snapshot() {
