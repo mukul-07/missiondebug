@@ -115,10 +115,10 @@ def main() -> None:
     # captures in the portal. Shared by build_app and every save_now call.
     last_cache = LastSessionCache()
 
-    app = build_app(
-        config, ring,
-        hub_client=hub_client, s3_uploader=s3_uploader, last_cache=last_cache,
-    )
+    # NOTE: build_app() is constructed further down, AFTER we decide between the
+    # C++ capture module and the Python RingBuffer, so the control API and
+    # save_now read from whichever buffer is actually in use. The choice needs
+    # the detector-topic set (callbacks_by_topic), which is built below.
 
     # Multiple detectors may want callbacks on the same topic (e.g. /tf used
     # by path-deviation AND a config rule). Stack them per topic and present
@@ -303,8 +303,6 @@ def main() -> None:
         log.info("Watching %d topic(s) for dropout", len(dropout_cfgs))
 
     # ---------- ROS bridge ----------
-    from .ros_bridge import RosBridge
-
     # Compose multi-callbacks-per-topic into the single-callback shape the
     # bridge expects. Order is registration order.
     composed: dict = {}
@@ -313,14 +311,44 @@ def main() -> None:
             for c in _cbs:
                 c(msg, ts_ns)
         composed[topic_name] = fan_out
-    bridge = RosBridge(config, ring, message_callbacks=composed)
 
-    spin_thread = threading.Thread(target=bridge.spin, name="rclpy-spin", daemon=True)
-    spin_thread.start()
+    # Capture path: prefer the C++ module (missiondebug_capture) when it is
+    # importable; its hot path is ~2x cheaper (measured). It presents the same
+    # snapshot() shape, so save_now / write_session are unchanged. When the
+    # module is absent (source build without the extension, odd platform) or
+    # MD_CAPTURE=python is set, fall back to the Python RosBridge + RingBuffer.
+    from .cpp_capture import build_capture
+    capture = build_capture(config, message_callbacks=composed)
+
+    if capture is not None:
+        # C++ path: the adapter is BOTH the buffer (snapshot/len for the control
+        # API + save_now) and the capture engine (start/stop). No Python spin.
+        buffer_obj = capture
+        bridge = None
+        spin_thread = None
+    else:
+        # Python fallback: the existing RosBridge spins on its own thread and
+        # fills the RingBuffer created above.
+        from .ros_bridge import RosBridge
+        buffer_obj = ring
+        bridge = RosBridge(config, ring, message_callbacks=composed)
+        spin_thread = None
+
+    app = build_app(
+        config, buffer_obj,
+        hub_client=hub_client, s3_uploader=s3_uploader, last_cache=last_cache,
+    )
+
+    if capture is not None:
+        capture.start()
+    else:
+        spin_thread = threading.Thread(
+            target=bridge.spin, name="rclpy-spin", daemon=True)
+        spin_thread.start()
 
     try:
         if config.http_uds:
-            # Serve on a Unix domain socket (no port to allocate or collide).
+            # Serve on a Unix socket (no port to allocate or collide).
             log.info("Serving control API on socket %s", config.http_uds)
             uvicorn.run(app, uds=config.http_uds, log_level="info")
         else:
@@ -328,6 +356,8 @@ def main() -> None:
                 app, host=config.http_host, port=config.http_port, log_level="info"
             )
     finally:
+        if capture is not None:
+            capture.stop()
         if dropout_detector is not None:
             dropout_detector.stop()
         if hub_client is not None:
