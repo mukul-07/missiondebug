@@ -7,7 +7,9 @@ endif()
 
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
-# pybind11: prefer the ament package if present, else plain pybind11.
+# pybind11's new tools call python3_add_library, which only exists after
+# FindPython3 is loaded with the Development component. Find it first.
+find_package(Python3 REQUIRED COMPONENTS Interpreter Development)
 find_package(pybind11_vendor QUIET)
 find_package(pybind11 REQUIRED)
 
