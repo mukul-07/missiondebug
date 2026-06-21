@@ -16,7 +16,12 @@ find_package(pybind11 REQUIRED)
 # Build the Python extension module. pybind11_add_module produces a correctly
 # named, suffixed shared object (missiondebug_capture.cpython-310-*.so).
 pybind11_add_module(missiondebug_capture src/capture.cpp)
-ament_target_dependencies(missiondebug_capture rclcpp)
+# Link rclcpp with the KEYWORD form (PRIVATE). pybind11/FindPython already use
+# the keyword signature on this target, and CMake forbids mixing keyword and
+# plain target_link_libraries on one target, so ament_target_dependencies
+# (which uses the plain form) cannot be used here.
+target_link_libraries(missiondebug_capture PRIVATE ${rclcpp_LIBRARIES})
+target_include_directories(missiondebug_capture PRIVATE ${rclcpp_INCLUDE_DIRS})
 
 # Install the .so where it can be imported. Lands in
 # install/missiondebug_capture/lib/ for a colcon build; for the agent .deb we
