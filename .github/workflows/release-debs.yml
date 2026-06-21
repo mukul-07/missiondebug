@@ -78,7 +78,29 @@ jobs:
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             python3 python3-venv python3-pip dpkg-dev fakeroot \
-            git ca-certificates curl adduser
+            git ca-certificates curl adduser gnupg
+
+      - name: Install ROS 2 (for the C++ capture extension)
+        # Build deps for the optional C++ capture extension: rclcpp + pybind11 +
+        # cmake/compiler. ROS distro matches the Ubuntu: Humble on 22.04, Jazzy
+        # on 24.04. If this step ever fails, the .deb build skips the extension
+        # and the agent falls back to the Python capture path, so it is not
+        # release-blocking, but we want the extension in the shipped .deb.
+        run: |
+          ROS_DISTRO=$([ "${{ matrix.ubuntu }}" = "24.04" ] && echo jazzy || echo humble)
+          echo "ROS_DISTRO=$ROS_DISTRO" >> "$GITHUB_ENV"
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            software-properties-common
+          add-apt-repository universe -y
+          curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
+            -o /usr/share/keyrings/ros-archive-keyring.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) main" \
+            > /etc/apt/sources.list.d/ros2.list
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            cmake g++ \
+            ros-$ROS_DISTRO-rclcpp ros-$ROS_DISTRO-pybind11-vendor \
+            python3-dev
 
       - name: Checkout
         uses: actions/checkout@v4
@@ -97,6 +119,8 @@ jobs:
           MD_VERSION: ${{ steps.ver.outputs.version }}
           MD_DEB_SUFFIX: ubuntu${{ matrix.ubuntu }}
         run: |
+          # Source ROS so build-capture-so.sh finds rclcpp (CMAKE_PREFIX_PATH).
+          [ -f "/opt/ros/${ROS_DISTRO}/setup.bash" ] && . "/opt/ros/${ROS_DISTRO}/setup.bash"
           ./packaging/build-deb.sh agent
           ./packaging/build-deb.sh backend
 

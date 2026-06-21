@@ -107,6 +107,23 @@ build_agent() {
 
     relocate_venv_shebangs "$PREFIX/venv" "/opt/missiondebug/venv"
 
+    # C++ capture extension (optional, ~2x cheaper capture). Build it with the
+    # venv's python so the ABI matches, then drop the .so into the venv
+    # site-packages so the agent imports it with no PYTHONPATH. Best-effort: if
+    # the ROS 2 / pybind11 build deps are missing, skip it and the agent falls
+    # back to the pure-Python capture path (proven to work).
+    local VENV_PY="$PREFIX/venv/bin/python"
+    local SITE
+    SITE="$("$VENV_PY" -c 'import site; print(site.getsitepackages()[0])' 2>/dev/null || true)"
+    if [ -n "$SITE" ] && SO_PATH="$("$PKG/build-capture-so.sh" "$VENV_PY" "$BUILD/agent-capture-so" 2>/dev/null)"; then
+        # SITE is an absolute path inside the staged venv already (the venv lives
+        # under $PREFIX), so copy the .so straight in.
+        cp "$SO_PATH" "$SITE/" && \
+            echo "[agent] bundled C++ capture extension: $(basename "$SO_PATH")"
+    else
+        echo "[agent] C++ capture extension skipped (build deps absent); agent will use the Python capture path"
+    fi
+
     install -m 0755 "$PKG/missiondebug-agent" "$PREFIX/bin/missiondebug-agent"
     install -m 0644 "$PKG/default-config.yaml" "$STAGE/etc/missiondebug/config.yaml.default"
     install -m 0644 "$PKG/missiondebug-agent.service" \

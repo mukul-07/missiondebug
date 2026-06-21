@@ -26,7 +26,7 @@ from .ring_buffer import RingBuffer
 
 # Bumped per release; reported to the hub in every heartbeat so fleet
 # operators can spot agents lagging behind on rollouts.
-AGENT_VERSION = "0.5.2"
+AGENT_VERSION = "0.6.0"
 
 log = logging.getLogger("missiondebug_agent")
 
@@ -72,6 +72,11 @@ def main() -> None:
         window_seconds=config.buffer_seconds,
         max_total_bytes=config.max_total_bytes,
     )
+    # The buffer the detector auto-saves flush. A one-element holder because the
+    # detector callbacks below close over it BEFORE we know whether the C++
+    # capture adapter or the Python ring is the live buffer; we set it once the
+    # capture path is chosen further down. Both expose snapshot()/__len__.
+    active_buffer = [ring]
 
     # v2 (fleet): optional hub registration. Started here so it's running by
     # the time the first save fires; stopped in the finally block below.
@@ -134,7 +139,7 @@ def main() -> None:
     def on_stall(_a: StallAnomaly) -> None:
         log.info("Auto-saving session due to stall anomaly")
         try:
-            r = save_now(config, ring, label="anomaly:stall", hub_client=hub_client, s3_uploader=s3_uploader, last_cache=last_cache)
+            r = save_now(config, active_buffer[0], label="anomaly:stall", hub_client=hub_client, s3_uploader=s3_uploader, last_cache=last_cache)
             log.info("Auto-saved %s (%.2fs)", r.session_id, r.duration_s)
         except Exception:
             log.exception("Auto-save failed (stall)")
@@ -184,7 +189,7 @@ def main() -> None:
         def on_path_deviation(a: PathDeviationAnomaly) -> None:
             log.info("Auto-saving session due to path-deviation anomaly")
             try:
-                r = save_now(config, ring, label="anomaly:path-deviation", hub_client=hub_client, s3_uploader=s3_uploader, last_cache=last_cache)
+                r = save_now(config, active_buffer[0], label="anomaly:path-deviation", hub_client=hub_client, s3_uploader=s3_uploader, last_cache=last_cache)
                 log.info("Auto-saved %s (%.2fs, drift %.2fm)",
                          r.session_id, r.duration_s, a.distance_m)
             except Exception:
@@ -225,7 +230,7 @@ def main() -> None:
             label = f"anomaly:{a.name}"
             log.info("Auto-saving session: rule %s", a.name)
             try:
-                r = save_now(config, ring, label=label, hub_client=hub_client, s3_uploader=s3_uploader, last_cache=last_cache)
+                r = save_now(config, active_buffer[0], label=label, hub_client=hub_client, s3_uploader=s3_uploader, last_cache=last_cache)
                 log.info("Auto-saved %s (%.2fs, matched=%r)",
                          r.session_id, r.duration_s, a.matched_value)
             except Exception:
@@ -249,7 +254,7 @@ def main() -> None:
         def on_compare_anomaly(a: CompareAnomaly) -> None:
             log.info("Auto-saving session: compare rule %s", a.name)
             try:
-                r = save_now(config, ring, label=f"anomaly:{a.name}", hub_client=hub_client, s3_uploader=s3_uploader, last_cache=last_cache)
+                r = save_now(config, active_buffer[0], label=f"anomaly:{a.name}", hub_client=hub_client, s3_uploader=s3_uploader, last_cache=last_cache)
                 log.info("Auto-saved %s (%.2fs, a=%r b=%r)",
                          r.session_id, r.duration_s, a.a_value, a.b_value)
             except Exception:
@@ -283,7 +288,7 @@ def main() -> None:
         def on_dropout(a: DropoutAnomaly) -> None:
             log.info("Auto-saving session: dropout on %s", a.topic)
             try:
-                r = save_now(config, ring, label=f"anomaly:{a.name}", hub_client=hub_client, s3_uploader=s3_uploader, last_cache=last_cache)
+                r = save_now(config, active_buffer[0], label=f"anomaly:{a.name}", hub_client=hub_client, s3_uploader=s3_uploader, last_cache=last_cache)
                 log.info("Auto-saved %s (%.2fs, silence %.2fs)",
                          r.session_id, r.duration_s, a.silence_ns / 1e9)
             except Exception:
@@ -333,6 +338,9 @@ def main() -> None:
         buffer_obj = ring
         bridge = RosBridge(config, ring, message_callbacks=composed)
         spin_thread = None
+
+    # Point the detector auto-saves at the live buffer (C++ adapter or ring).
+    active_buffer[0] = buffer_obj
 
     app = build_app(
         config, buffer_obj,

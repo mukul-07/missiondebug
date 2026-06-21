@@ -5,7 +5,11 @@ if(NOT CMAKE_CXX_STANDARD)
   set(CMAKE_CXX_STANDARD 17)
 endif()
 
-find_package(ament_cmake REQUIRED)
+# ament_cmake is optional: present under a colcon build (dev loop), absent for a
+# plain `cmake` build (the .deb packaging path, packaging/build-capture-so.sh).
+# rclcpp + pybind11 are found the same way either way as long as a ROS 2 env is
+# sourced (CMAKE_PREFIX_PATH points at /opt/ros/<distro>).
+find_package(ament_cmake QUIET)
 find_package(rclcpp REQUIRED)
 # pybind11's new tools call python3_add_library, which only exists after
 # FindPython3 is loaded with the Development component. Find it first.
@@ -24,10 +28,14 @@ target_link_libraries(missiondebug_capture PRIVATE ${rclcpp_LIBRARIES})
 target_include_directories(missiondebug_capture PRIVATE ${rclcpp_INCLUDE_DIRS})
 
 # Install the .so where it can be imported. Lands in
-# install/missiondebug_capture/lib/ for a colcon build; for the agent .deb we
-# copy it next to the Python package. (Phase 1 just needs it importable for the
-# parity test; final placement is a Phase 3 packaging concern.)
+# install/missiondebug_capture/lib/ for a colcon build; for the agent .deb,
+# packaging/build-capture-so.sh finds the built .so directly and copies it into
+# the venv site-packages, so this install rule is only used by colcon.
 install(TARGETS missiondebug_capture
   DESTINATION lib/${PROJECT_NAME})
 
-ament_package()
+# ament_package() only when building under ament (colcon). A plain cmake build
+# (the .deb path) does not have it and does not need it.
+if(ament_cmake_FOUND)
+  ament_package()
+endif()
