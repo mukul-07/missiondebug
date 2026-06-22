@@ -34,8 +34,15 @@ class SessionIngest(BaseModel):
     label: str | None = None
     topics: list[str] = Field(default_factory=list)
     mcap_size_bytes: int = Field(ge=0)
-    mcap_url: str = Field(
-        description="HTTP URL the hub will use to fetch MCAP bytes on demand."
+    mcap_url: str | None = Field(
+        default=None,
+        description=(
+            "HTTP URL the hub uses to fetch MCAP bytes on demand. Optional: an "
+            "agent serving its control API over a Unix domain socket (no "
+            "reachable host:port) has no fetchable URL, so it ingests the "
+            "session metadata without one. The session is recorded; the hub "
+            "just cannot stream-proxy the bytes back for that session."
+        ),
     )
     subsystem: str | None = Field(default=None, max_length=120)
     summary: str | None = Field(

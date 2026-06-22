@@ -99,6 +99,24 @@ def test_ingest_summary_optional(tmp_path):
     assert s["summary"] is None
 
 
+def test_ingest_without_mcap_url(tmp_path):
+    """An agent serving its control API over a Unix domain socket has no
+    reachable host:port, so it cannot construct an mcap_url and ingests the
+    session without one. The session must still record (mcap_url null); the
+    hub just cannot stream-proxy the bytes. Regression: mcap_url was a required
+    field, so UDS agents got a 422 and their captures never reached the hub."""
+    c = _client(tmp_path)
+    payload = _ingest_payload()
+    payload.pop("mcap_url", None)
+    r = c.post("/api/v1/sessions/ingest", json=payload)
+    assert r.status_code == 200, r.text
+    assert r.json()["ingested"] is True
+
+    s = c.get("/api/sessions").json()["sessions"][0]
+    assert s["robot_id"] == "robot-001"
+    assert s["label"] == "anomaly:stall"
+
+
 def test_ingest_idempotent(tmp_path):
     """Re-ingesting the same session_id replaces the row (no duplicate)."""
     c = _client(tmp_path)

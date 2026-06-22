@@ -244,7 +244,7 @@ def build_app(
             "lives under `/api/*`. See https://github.com/mukul-07/missiondebug "
             "for the architecture and the agent that produces the MCAP files."
         ),
-        version="1.5.0",
+        version="1.5.1",
         license_info={"name": "MIT", "url": "https://github.com/mukul-07/missiondebug/blob/main/LICENSE"},
         contact={"name": "MissionDebug", "url": "https://github.com/mukul-07/missiondebug"},
         openapi_tags=[
