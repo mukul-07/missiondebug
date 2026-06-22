@@ -6,17 +6,19 @@ this happened before?"), and plain-English queries over your incident history.
 
 ![The hub's fleet incident dashboard: captures, resolution rate, MTTR, recurrence rate, captures per day, top recurring patterns, and captures by robot](screenshot-incidents.png)
 
-You do **not** need a hub to use MissionDebug:
+You do **not** need a hub to use MissionDebug. A **single robot** works fully
+without one: captures are saved on the robot as standard `.mcap` files; copy one
+off and open it in [Foxglove](https://app.foxglove.dev) to replay. Set up a hub
+when you want a fleet-wide incident dashboard in one place.
 
-- A **single robot** works fully without one. Captures are saved on the robot as
-  standard `.mcap` files; copy one off and open it in [Foxglove](https://app.foxglove.dev)
-  to replay.
-- To **see all your robots at a glance**, the fleet view in the Transitive
-  portal already shows every robot's status and most recent capture, with no
-  setup.
+(If you run MissionDebug through the
+[Transitive Robotics capability](https://github.com/mukul-07/missiondebug-transitive),
+the portal's fleet view already shows every robot's status and most recent
+capture with no hub and no setup; the hub is still optional there, for the
+deeper incident dashboard.)
 
 There is **no hosted hub and no sign-up**. The hub is software you install on a
-machine you control. Set one up when you want the fleet-wide incident dashboard.
+machine you control.
 
 ## 1. Pick a machine to be the hub
 
@@ -89,13 +91,18 @@ scrub its timeline, including the camera frames captured around the incident:
 
 ## Which view should I use?
 
-| | Fleet view (Transitive portal) | MissionDebug hub |
+| | On-robot `.mcap` + Foxglove | MissionDebug hub |
 |---|---|---|
 | Setup | None | Install backend + web on a reachable machine |
-| Network | Works anywhere (robots already talk to Transitive) | Robots must be able to reach the hub |
-| Shows | Every robot's status + most recent capture | Full incident dashboard: replay, summaries, similarity, AI |
-| Best for | "Is my fleet OK right now?" | Deep, cross-fleet incident review |
+| Network | None (the file is on the robot) | Robots must be able to reach the hub |
+| Shows | One capture, replayed | Full incident dashboard across a fleet: replay, summaries, similarity, AI |
+| Best for | Reviewing a single capture | Deep, cross-fleet incident review |
 
-For most users, the portal fleet view plus on-robot `.mcap` replay in Foxglove
-is the whole story. Stand up the hub when you want the deeper incident-memory
-features across a fleet.
+For a single robot, copying a capture off and opening it in Foxglove is the
+whole story. Stand up the hub when you want the fleet-wide incident dashboard.
+
+If you run MissionDebug through the
+[Transitive Robotics capability](https://github.com/mukul-07/missiondebug-transitive),
+there is also a third view: the portal's fleet view shows every robot's status
+and most recent capture with no setup, which covers "is my fleet OK right now?"
+without a hub.
