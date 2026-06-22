@@ -4,6 +4,8 @@ The **hub** is an optional, self-hosted MissionDebug dashboard for browsing
 incidents across a fleet: replay, structured summaries, similarity search ("has
 this happened before?"), and plain-English queries over your incident history.
 
+![The hub's fleet incident dashboard: captures, resolution rate, MTTR, recurrence rate, captures per day, top recurring patterns, and captures by robot](screenshot-incidents.png)
+
 You do **not** need a hub to use MissionDebug:
 
 - A **single robot** works fully without one. Captures are saved on the robot as
@@ -80,7 +82,10 @@ hub address. The robot **POSTs** its capture metadata to the hub, so:
   restart the agent after editing (`sudo systemctl restart missiondebug-agent`).
 
 The agent then posts each capture's metadata to the hub as it happens, and the
-hub's dashboard shows your fleet's incidents in one place.
+hub's dashboard shows your fleet's incidents in one place. Open any capture to
+scrub its timeline, including the camera frames captured around the incident:
+
+![A captured session in the hub: synchronized camera feeds, pose track, timeline scrubber, and a message inspector at the playhead](screenshot-detail.png)
 
 ## Which view should I use?
 
