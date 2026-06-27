@@ -79,7 +79,10 @@ class RosBridge:
             # Skip it with a warning; capture everything else and stay up.
             log.warning(
                 "Skipping topic %s: cannot resolve message type %r (%s). "
-                "Is the message package installed on this robot?",
+                "Its message package must be built and sourced on this robot "
+                "(custom types like px4_msgs are not present by default); the "
+                "agent stays up and captures everything else, but this topic "
+                "will not be recorded.",
                 topic.name, topic.type, err,
             )
             return

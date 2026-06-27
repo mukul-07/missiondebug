@@ -84,6 +84,30 @@ def _filename(robot_id: str) -> str:
     return f"{robot_id}_{ts}.mcap"
 
 
+def _empty_buffer_detail(config: AgentConfig) -> str:
+    """Diagnostic message for an empty-buffer capture.
+
+    A bare "ring buffer is empty" is a dead end for the user: the common
+    cause is a configured topic whose messages never arrived, either because
+    it is not publishing, or because its message package is not built where
+    the agent runs. Custom message types (for example px4_msgs) must be
+    installed and sourced on the robot; without them the agent cannot
+    subscribe and silently captures nothing. Name the topics and the cause so
+    the user can act instead of guessing.
+    """
+    names = [t.name for t in config.topics]
+    if not names:
+        return "ring buffer is empty: no topics are configured for capture."
+    topic_list = ", ".join(names)
+    return (
+        "ring buffer is empty: no messages received on any configured topic "
+        f"({topic_list}). Check that these topics are publishing, and that "
+        "their message packages are installed and sourced on this robot. "
+        "Custom message types (for example px4_msgs) must be built where the "
+        "agent runs, otherwise the agent cannot subscribe and captures nothing."
+    )
+
+
 def save_now(
     config: AgentConfig,
     ring: RingBuffer,
@@ -105,7 +129,7 @@ def save_now(
     """
     snap = ring.snapshot()
     if not snap:
-        raise HTTPException(status_code=409, detail="ring buffer is empty")
+        raise HTTPException(status_code=409, detail=_empty_buffer_detail(config))
 
     output_dir = Path(config.output_dir)
     topic_types = {t.name: t.type for t in config.topics}
@@ -203,7 +227,7 @@ def build_app(
             "writes an MCAP file when a detector fires or when this API is "
             "called. Bind to loopback only. There is no authentication."
         ),
-        version="0.6.1",
+        version="0.6.2",
         license_info={"name": "MIT", "url": "https://github.com/mukul-07/missiondebug/blob/main/LICENSE"},
         contact={"name": "MissionDebug", "url": "https://github.com/mukul-07/missiondebug"},
         openapi_tags=[

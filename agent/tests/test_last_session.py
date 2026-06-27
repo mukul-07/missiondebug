@@ -71,6 +71,43 @@ def test_last_session_404_before_any_capture(tmp_path):
     assert exc.value.status_code == 404
 
 
+def test_empty_buffer_save_raises_diagnostic_409(tmp_path):
+    """An empty-buffer capture explains WHY instead of a bare error.
+
+    Reproduces Shane's case: a configured topic (px4_msgs) whose package is
+    not built, so nothing is captured. The 409 detail should name the topics
+    and point at the message-package cause, not just say 'ring buffer is empty'.
+    """
+    config = AgentConfig(
+        robot_id="robot-001",
+        buffer_seconds=60.0,
+        topics=[TopicConfig(
+            name="/fmu/out/vehicle_odometry",
+            type="px4_msgs/msg/VehicleOdometry",
+        )],
+        output_dir=str(tmp_path),
+    )
+    empty_ring = RingBuffer(window_seconds=60.0)
+    with pytest.raises(HTTPException) as exc:
+        save_now(config, empty_ring, label=None, schema_loader=_loader)
+    assert exc.value.status_code == 409
+    detail = exc.value.detail
+    assert "/fmu/out/vehicle_odometry" in detail
+    assert "px4_msgs" in detail
+    assert "message package" in detail
+
+
+def test_empty_buffer_with_no_topics_configured(tmp_path):
+    config = AgentConfig(
+        robot_id="robot-001", buffer_seconds=60.0, topics=[],
+        output_dir=str(tmp_path),
+    )
+    with pytest.raises(HTTPException) as exc:
+        save_now(config, RingBuffer(window_seconds=60.0), schema_loader=_loader)
+    assert exc.value.status_code == 409
+    assert "no topics are configured" in exc.value.detail
+
+
 def test_save_now_populates_cache_and_endpoint_reflects_it(tmp_path):
     """A manual save updates the cache; /sessions/last returns its shape."""
     cache = LastSessionCache()
