@@ -227,7 +227,7 @@ def build_app(
             "writes an MCAP file when a detector fires or when this API is "
             "called. Bind to loopback only. There is no authentication."
         ),
-        version="0.6.2",
+        version="0.7.0",
         license_info={"name": "MIT", "url": "https://github.com/mukul-07/missiondebug/blob/main/LICENSE"},
         contact={"name": "MissionDebug", "url": "https://github.com/mukul-07/missiondebug"},
         openapi_tags=[
@@ -240,6 +240,21 @@ def build_app(
     def healthz():
         """Returns `{ok, buffer_size, robot_id}`. buffer_size is the number of buffered messages across all topics."""
         return {"ok": True, "buffer_size": len(ring), "robot_id": config.robot_id}
+
+    @app.get("/topics", tags=["system"], summary="Discover ROS topics on this robot")
+    def topics():
+        """List the ROS 2 topics visible on this robot, each with its message
+        `type`, whether that type is `resolvable` here (px4_msgs and other unbuilt
+        types report False, instead of silently skipping), and whether it is
+        `recommended` to capture (with a `reason`).
+
+        Path-independent: uses a short-lived discovery node, so it works whether
+        capture runs on the C++ or the Python engine. Best-effort and additive:
+        returns `{"topics": []}` if ROS discovery is unavailable; older clients
+        that never call it are unaffected.
+        """
+        from .discovery import discover_topics
+        return {"topics": discover_topics()}
 
     @app.post(
         "/sessions/save",
