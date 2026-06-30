@@ -23,29 +23,53 @@ from .ros_bridge import _resolve_msg_type
 
 # Heuristic "recommended to capture" patterns: common control + telemetry topics
 # across ground robots, drones (mavros), and manipulators. Transparent and static
-# (NOT ML): a topic is recommended when its name matches one of these. The reason
-# string is surfaced so the UI can explain "why recommended".
-_RECOMMENDED: list[tuple[re.Pattern[str], str]] = [
-    (re.compile(r"/cmd_vel$"), "velocity command"),
-    (re.compile(r"/odom$|/odometry"), "odometry"),
-    (re.compile(r"/scan$|/laser"), "laser scan"),
-    (re.compile(r"/tf$|/tf_static$"), "transforms"),
-    (re.compile(r"/battery|/power"), "battery / power"),
-    (re.compile(r"/imu"), "IMU"),
-    (re.compile(r"/joint_states$|/joint_trajectory"), "joint states"),
-    (re.compile(r"/wrench|/ft_sensor"), "force / torque"),
-    (re.compile(r"/plan$|/path$|/global_plan"), "planned path"),
-    (re.compile(r"/mavros/state$"), "flight state"),
-    (re.compile(r"/mavros/.*(position|velocity|altitude|global)"), "flight telemetry"),
-    (re.compile(r"/image|/camera"), "camera"),
+# Signal-type classifier (NOT ML). Each topic is sorted into a CATEGORY by its
+# name and/or message type. The category sets a default "recommend" (whether the
+# capture checkbox starts on) and a plain-language reason the UI can show. The goal
+# is "we pre-checked the signals that usually matter for an incident; adjust if you
+# want" -- recommend by KIND, we do not claim to know the anomaly.
+#
+# Order matters: the first matching rule wins. Rules can match on name (n), type
+# (t), or both. category is one of:
+#   control state safety perception transform plan debug other
+# recommend=True categories pre-check; debug/other start unchecked (shown, never
+# hidden -- the user decides on anything we do not recognize).
+_CATEGORIES = [
+    # category, recommend, reason, name_regex|None, type_regex|None
+    ("debug", False, "diagnostic / log topic, usually not needed",
+        re.compile(r"/rosout|/parameter_events|/diagnostics_agg|_debug$|/debug"), None),
+    ("transform", True, "coordinate transforms, needed to interpret other topics",
+        re.compile(r"/tf$|/tf_static$"), re.compile(r"tf2_msgs/")),
+    ("control", True, "control command (what the robot was told to do)",
+        re.compile(r"/cmd_vel|/cmd_|/setpoint|joint_trajectory|/command"),
+        re.compile(r"Twist|JointTrajectory|AckermannDrive")),
+    ("safety", True, "safety / health signal (a common cause in incidents)",
+        re.compile(r"/battery|/power|/diagnostics$|/emergency|/estop|/fault"),
+        re.compile(r"BatteryState|DiagnosticArray")),
+    ("state", True, "robot state / telemetry (what the robot actually did)",
+        re.compile(r"/odom|/odometry|/joint_states|/imu|/pose|/wrench|/ft_sensor|"
+                   r"/mavros/(state|local_position|global_position|altitude|imu)"),
+        re.compile(r"Odometry|JointState|Imu|PoseStamped|WrenchStamped|NavSatFix")),
+    ("plan", True, "plan / goal (intent, to compare against what happened)",
+        re.compile(r"/plan$|/path$|/global_plan|/goal|/waypoints"),
+        re.compile(r"nav_msgs/msg/Path")),
+    ("perception", True, "perception / sensor stream (often large)",
+        re.compile(r"/scan|/laser|/image|/camera|/points|/pointcloud|/depth"),
+        re.compile(r"LaserScan|Image|CompressedImage|PointCloud2")),
 ]
 
+# Message types that tend to be high-rate / large; flagged so the UI can warn
+# "capturing this will grow your file".
+_LARGE_TYPE = re.compile(r"Image|PointCloud2|CompressedImage|LaserScan")
 
-def _recommendation(name: str) -> str | None:
-    for pat, reason in _RECOMMENDED:
-        if pat.search(name):
-            return reason
-    return None
+
+def _classify(name: str, type_str: str) -> tuple[str, bool, str | None]:
+    """Return (category, recommend, reason) for a topic. Unrecognized -> ('other',
+    False, None): shown to the user but not pre-checked."""
+    for category, recommend, reason, n_re, t_re in _CATEGORIES:
+        if (n_re and n_re.search(name)) or (t_re and type_str and t_re.search(type_str)):
+            return category, recommend, reason
+    return "other", False, None
 
 
 def _is_resolvable(type_str: str) -> bool:
@@ -74,13 +98,15 @@ def classify_topics(names_and_types: list[tuple[str, list[str]]]) -> list[dict]:
         if name in _HIDDEN:
             continue
         type_str = types[0] if types else ""
-        reason = _recommendation(name)
+        category, recommend, reason = _classify(name, type_str)
         out.append({
             "name": name,
             "type": type_str,
             "resolvable": _is_resolvable(type_str) if type_str else False,
-            "recommended": reason is not None,
+            "category": category,
+            "recommended": recommend,
             "reason": reason,
+            "large": bool(type_str and _LARGE_TYPE.search(type_str)),
         })
     out.sort(key=lambda t: t["name"])
     return out

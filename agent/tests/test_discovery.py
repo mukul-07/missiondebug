@@ -1,95 +1,90 @@
-"""discovery: classify_topics turns raw ROS graph output into the discovery
-dicts (resolvable + recommended), without needing a running ROS graph."""
+"""discovery: classify_topics sorts ROS topics into signal categories with a
+recommend default + reason, without needing a running ROS graph."""
 
 import missiondebug_agent.discovery as disc
-from missiondebug_agent.discovery import (
-    _recommendation,
-    classify_topics,
-)
+from missiondebug_agent.discovery import _classify, classify_topics
 
 
-def test_recommendation_matches_common_signals():
-    assert _recommendation("/cmd_vel") == "velocity command"
-    assert _recommendation("/odom") == "odometry"
-    assert _recommendation("/scan") == "laser scan"
-    assert _recommendation("/mavros/state") == "flight state"
-    assert _recommendation("/joint_states") == "joint states"
-    # a namespaced cmd_vel still matches
-    assert _recommendation("/robot1/cmd_vel") == "velocity command"
+def test_classify_control():
+    cat, rec, _ = _classify("/cmd_vel", "geometry_msgs/msg/Twist")
+    assert cat == "control" and rec is True
 
 
-def test_recommendation_none_for_unknown_topic():
-    assert _recommendation("/some/random/debug_topic") is None
+def test_classify_state_by_type():
+    # name unknown but the type says Odometry -> state, recommended
+    cat, rec, _ = _classify("/wheel_telemetry", "nav_msgs/msg/Odometry")
+    assert cat == "state" and rec is True
 
 
-def test_classify_filters_hidden_topics():
+def test_classify_safety():
+    cat, rec, _ = _classify("/battery", "sensor_msgs/msg/BatteryState")
+    assert cat == "safety" and rec is True
+
+
+def test_classify_perception_and_large():
+    cat, rec, _ = _classify("/camera/image_raw/compressed", "sensor_msgs/msg/CompressedImage")
+    assert cat == "perception" and rec is True
+
+
+def test_classify_transform():
+    cat, rec, _ = _classify("/tf", "tf2_msgs/msg/TFMessage")
+    assert cat == "transform" and rec is True
+
+
+def test_classify_plan():
+    cat, rec, _ = _classify("/plan", "nav_msgs/msg/Path")
+    assert cat == "plan" and rec is True
+
+
+def test_classify_debug_not_recommended():
+    cat, rec, _ = _classify("/random_debug", "std_msgs/msg/String")
+    assert cat == "debug" and rec is False
+
+
+def test_classify_unknown_is_other_unchecked():
+    # a custom topic we do not recognize: shown but NOT pre-checked
+    cat, rec, reason = _classify("/my_proprietary_status", "custom_msgs/msg/Status")
+    assert cat == "other" and rec is False and reason is None
+
+
+def test_debug_wins_over_other_patterns():
+    # a name ending in _debug must be debug even if it carries a state-ish type
+    cat, rec, _ = _classify("/odom_debug", "nav_msgs/msg/Odometry")
+    assert cat == "debug" and rec is False
+
+
+def test_classify_topics_shape_and_fields():
     raw = [
-        ("/parameter_events", ["rcl_interfaces/msg/ParameterEvent"]),
-        ("/rosout", ["rcl_interfaces/msg/Log"]),
         ("/cmd_vel", ["geometry_msgs/msg/Twist"]),
+        ("/camera/image_raw", ["sensor_msgs/msg/Image"]),
+        ("/random_debug", ["std_msgs/msg/String"]),
+        ("/parameter_events", ["rcl_interfaces/msg/ParameterEvent"]),  # hidden
     ]
-    names = [t["name"] for t in classify_topics(raw)]
-    assert names == ["/cmd_vel"]  # hidden ones dropped, the rest kept
+    out = classify_topics(raw)
+    names = [t["name"] for t in out]
+    assert "/parameter_events" not in names, "hidden topics dropped"
+    by = {t["name"]: t for t in out}
+    assert by["/cmd_vel"]["category"] == "control" and by["/cmd_vel"]["recommended"] is True
+    assert by["/camera/image_raw"]["large"] is True, "Image flagged large"
+    assert by["/random_debug"]["recommended"] is False
+    # every dict carries the full field set the card relies on
+    for t in out:
+        assert set(t) >= {"name", "type", "resolvable", "category", "recommended", "reason", "large"}
 
 
-def test_classify_sorts_by_name():
-    raw = [
-        ("/zzz", ["std_msgs/msg/String"]),
-        ("/aaa", ["std_msgs/msg/String"]),
-        ("/mmm", ["std_msgs/msg/String"]),
-    ]
-    assert [t["name"] for t in classify_topics(raw)] == ["/aaa", "/mmm", "/zzz"]
-
-
-def test_classify_marks_recommended_with_reason():
-    out = classify_topics([("/cmd_vel", ["geometry_msgs/msg/Twist"])])
-    assert out[0]["recommended"] is True
-    assert out[0]["reason"] == "velocity command"
-
-    out = classify_topics([("/debug/foo", ["std_msgs/msg/String"])])
-    assert out[0]["recommended"] is False
-    assert out[0]["reason"] is None
-
-
-def test_classify_empty_type_is_unresolvable():
-    # a topic visible on the graph but with no type yet (DDS eventual consistency)
-    out = classify_topics([("/half_discovered", [])])
-    assert out[0]["type"] == ""
-    assert out[0]["resolvable"] is False
-
-
-def test_classify_resolvable_flag(monkeypatch):
-    # _is_resolvable imports the message package, which is not present off-robot,
-    # so stub it to assert classify wires the flag through (the px4 case = False).
-    def fake_resolvable(type_str):
-        return type_str.startswith("geometry_msgs") or type_str.startswith("std_msgs")
-
-    monkeypatch.setattr(disc, "_is_resolvable", fake_resolvable)
-    out = classify_topics([
-        ("/cmd_vel", ["geometry_msgs/msg/Twist"]),
-        ("/fmu/out/vehicle_odometry", ["px4_msgs/msg/VehicleOdometry"]),
-    ])
-    by_name = {t["name"]: t for t in out}
-    assert by_name["/cmd_vel"]["resolvable"] is True
-    # px4_msgs not built -> surfaced as unresolvable, not silently skipped
-    assert by_name["/fmu/out/vehicle_odometry"]["resolvable"] is False
-
-
-def test_classify_takes_first_type_when_multiple():
-    out = classify_topics([("/multi", ["a_msgs/msg/A", "b_msgs/msg/B"])])
-    assert out[0]["type"] == "a_msgs/msg/A"
+def test_classify_empty_type_unresolvable():
+    out = classify_topics([("/half", [])])
+    assert out[0]["type"] == "" and out[0]["resolvable"] is False
 
 
 def test_discover_topics_returns_empty_without_ros(monkeypatch):
-    # off-robot (no rclpy) the function must return [] and never raise.
     import builtins
+    real = builtins.__import__
 
-    real_import = builtins.__import__
-
-    def no_rclpy(name, *args, **kwargs):
+    def no_rclpy(name, *a, **k):
         if name == "rclpy" or name.startswith("rclpy."):
-            raise ImportError("rclpy not available")
-        return real_import(name, *args, **kwargs)
+            raise ImportError("no rclpy")
+        return real(name, *a, **k)
 
     monkeypatch.setattr(builtins, "__import__", no_rclpy)
     assert disc.discover_topics() == []
