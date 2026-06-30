@@ -108,14 +108,33 @@ def discover_topics(timeout_s: float = 1.0) -> list[dict]:
             created_context = True
         node = rclpy.create_node("missiondebug_discovery")
 
-        # Give DDS a brief moment to populate the graph, then read it.
-        end = node.get_clock().now().nanoseconds + int(timeout_s * 1e9)
+        # A brand-new node must let DDS discovery settle before the graph is
+        # visible: get_topic_names_and_types() returns [] until the node has been
+        # spun long enough to receive other participants' announcements. The old
+        # code broke out on the first non-empty read, which on a fresh node was
+        # often still incomplete (or returned [] forever if it never spun enough).
+        #
+        # Spin actively for a settle window, and keep going until the count has
+        # been STABLE across two reads (graph converged) or the window elapses. Use
+        # wall-clock via spin iterations (node clock may be sim/zero on some setups).
+        import time as _time
+
+        deadline = _time.monotonic() + max(timeout_s, 2.0)
         names_and_types: list[tuple[str, list[str]]] = []
-        while True:
-            names_and_types = node.get_topic_names_and_types()
-            if names_and_types or node.get_clock().now().nanoseconds >= end:
-                break
+        prev_count = -1
+        stable = 0
+        while _time.monotonic() < deadline:
             rclpy.spin_once(node, timeout_sec=0.1)
+            names_and_types = node.get_topic_names_and_types()
+            count = len(names_and_types)
+            # converged: same non-zero count seen twice in a row
+            if count > 0 and count == prev_count:
+                stable += 1
+                if stable >= 2:
+                    break
+            else:
+                stable = 0
+            prev_count = count
 
         return classify_topics(names_and_types)
     except Exception:
