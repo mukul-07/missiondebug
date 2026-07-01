@@ -22,8 +22,12 @@ PYTHON="$VENV/bin/python"
 ROS_SOURCED=
 for candidate in /opt/ros/humble/setup.bash /opt/ros/jazzy/setup.bash; do
     if [ -f "$candidate" ]; then
+        # Guard with set +e: ROS setup.bash may run a command that returns
+        # non-zero benignly, which would abort us under `set -e`.
         # shellcheck disable=SC1090
+        set +e
         source "$candidate"
+        set -e
         ROS_SOURCED="$candidate"
         break
     fi
@@ -35,20 +39,93 @@ if [ -z "$ROS_SOURCED" ]; then
     exit 1
 fi
 
-# Source any additional overlay workspaces. Base ROS above only exposes the
-# packages installed into /opt/ros/<distro>; custom message packages (e.g.
-# px4_msgs) usually live in the user's own colcon workspace, which must be
-# sourced separately for the agent to import their types. MD_ROS_SETUP_FILES is
-# a colon-separated list of setup.bash paths (like PATH); the supervising shim
-# sets it from the `ros_setup_files` config key, or a standalone install can
-# export it directly. Missing files are skipped with a warning, never fatal.
+# Auto-source built ROS 2 message workspaces found on the robot, so custom
+# message packages (px4_msgs and the like) resolve with NO per-robot config.
+# We only source ament INSTALL PREFIXES that were actually built (they have an
+# ament index + a local_setup.bash); `.msg` text alone is not enough for a
+# recorder that must subscribe. Read-only, never fatal, bounded (shallow scan +
+# a hard cap), and disabled by MD_ROS_AUTOSOURCE=0. Base ROS is already sourced
+# above; explicit MD_ROS_SETUP_FILES overlays are sourced AFTER this, so an
+# operator override still wins on AMENT_PREFIX_PATH.
+if [ "${MD_ROS_AUTOSOURCE:-1}" != "0" ]; then
+    _md_roots="${MD_ROS_WS_SEARCH:-}"
+    if [ -z "$_md_roots" ]; then
+        # Default search set. COLCON_PREFIX_PATH (set when a ws is active) plus a
+        # fixed list of likely install-prefix locations. Globs that match nothing
+        # stay literal, so we test -d before using each.
+        _md_roots="${COLCON_PREFIX_PATH:-}"
+        for _g in "$HOME"/*/install "$HOME"/*_ws/install "$HOME"/ros2_ws/install \
+                  /opt/*/install /opt/*_ws/install /workspaces/*/install \
+                  /home/transitive/*/install; do
+            [ -d "$_g" ] && _md_roots="${_md_roots}:${_g}"
+        done
+    fi
+    _md_count=0
+    # Prefixes already on the underlay (base ROS) - never re-source those.
+    _md_seen=":${AMENT_PREFIX_PATH:-}:"
+    IFS=':' read -ra _MD_ROOTS <<< "$_md_roots"
+    for _p in "${_MD_ROOTS[@]}"; do
+        [ -z "$_p" ] && continue
+        [ -d "$_p" ] || continue
+        case "$_md_seen" in *":$_p:"*) continue ;; esac  # underlay or already done
+        # Prefer local_setup.bash (adds ONLY this prefix, no underlay re-source).
+        _setup="$_p/local_setup.bash"; [ -f "$_setup" ] || _setup="$_p/setup.bash"
+        [ -f "$_setup" ] || continue
+        # Must be a real BUILT colcon/ament prefix, not just any dir with a setup
+        # file. The ament index marks generated packages. It sits either at the
+        # TOP level (colcon --merge-install) OR PER-PACKAGE under install/<pkg>/
+        # (colcon's DEFAULT isolated install, which is how PX4 docs build
+        # px4_msgs). Accept EITHER; the top-level setup.bash sources the
+        # per-package prefixes in both layouts. Reject a prefix with neither
+        # (a bare dir, or only `.msg` text) - that is not built and a recorder
+        # cannot subscribe to it.
+        if [ ! -d "$_p/share/ament_index/resource_index/packages" ]; then
+            # isolated layout: any per-package ament index under install/*/share/.
+            # Glob into a local var (NOT `set --`, which would clobber the agent's
+            # own CLI args in $@ that the final exec needs). Unmatched glob stays
+            # literal, so the -d test rejects it.
+            _md_idx=
+            for _cand in "$_p"/*/share/ament_index/resource_index/packages; do
+                [ -d "$_cand" ] && { _md_idx=1; break; }
+            done
+            [ -n "$_md_idx" ] || continue
+        fi
+        if [ "$_md_count" -ge "${MD_ROS_AUTOSOURCE_MAX:-20}" ]; then
+            echo "missiondebug-agent: auto-source cap reached, skipping the rest" >&2
+            break
+        fi
+        # A workspace setup.bash runs arbitrary shell; a benign non-zero command
+        # inside it would abort us under `set -e` (which stays active inside a
+        # sourced file). Guard with set +e so a noisy overlay can never stop the
+        # agent from starting. shellcheck disable=SC1090
+        set +e
+        source "$_setup"
+        set -e
+        _md_seen="${_md_seen}${_p}:"
+        _md_count=$((_md_count + 1))
+        echo "missiondebug-agent: auto-sourced built workspace: $_p" >&2
+    done
+fi
+
+# Source any additional overlay workspaces the operator configured explicitly.
+# Base ROS above only exposes /opt/ros/<distro>; custom message packages (e.g.
+# px4_msgs) live in the user's own colcon workspace. Auto-source above finds
+# built workspaces on its own; this explicit list is the override for anything
+# it misses (odd install locations). MD_ROS_SETUP_FILES is a colon-separated
+# list of setup.bash paths (like PATH); the supervising shim sets it from the
+# `ros_setup_files` config key, or a standalone install can export it directly.
+# Sourced last so it wins. Missing files are skipped with a warning, never fatal.
 if [ -n "${MD_ROS_SETUP_FILES:-}" ]; then
     IFS=':' read -ra _MD_SETUPS <<< "$MD_ROS_SETUP_FILES"
     for _s in "${_MD_SETUPS[@]}"; do
         [ -z "$_s" ] && continue
         if [ -f "$_s" ]; then
+            # Guard with set +e (see the auto-source block): a benign non-zero
+            # command inside the overlay's setup.bash must not abort the agent.
             # shellcheck disable=SC1090
+            set +e
             source "$_s"
+            set -e
         else
             echo "missiondebug-agent: overlay setup file not found, skipping: $_s" >&2
         fi

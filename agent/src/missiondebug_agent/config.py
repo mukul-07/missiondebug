@@ -236,8 +236,19 @@ class AgentConfig(BaseModel):
     # ROS only exposes /opt/ros/<distro>; custom message packages (px4_msgs and
     # the like) live in a user workspace that must be sourced for the agent to
     # import their types. The wrapper reads these via the MD_ROS_SETUP_FILES env
-    # var, which the supervising shim sets from this key. Empty = base ROS only.
+    # var, which the supervising shim sets from this key. This is the explicit
+    # override for anything auto-discovery misses; empty = rely on auto-source.
     ros_setup_files: list[str] = []
+    # Auto-source built message workspaces found on the robot (px4_msgs and the
+    # like) so custom types resolve with no per-robot config. On by default; the
+    # wrapper reads this via MD_ROS_AUTOSOURCE. Set False to source only base ROS
+    # plus ros_setup_files. Only *built* install prefixes are sourced (an ament
+    # index + setup file); `.msg` text alone is never enough for a recorder.
+    auto_source_workspaces: bool = True
+    # Extra roots to search for built workspaces, overriding the default set
+    # (colcon prefix path, ~/*_ws/install, /opt/*/install, and so on). Paths to
+    # install prefixes. Read via MD_ROS_WS_SEARCH. Empty = default locations.
+    ros_workspace_search: list[str] = []
     http_host: str = "127.0.0.1"
     http_port: int = 7000
     # When set, serve the local control API on this Unix domain socket instead

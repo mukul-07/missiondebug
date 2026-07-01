@@ -77,6 +77,31 @@ def test_ros_setup_files_config(tmp_path):
         "/home/ros/ws/install/setup.bash", "/opt/px4/setup.bash"]
 
 
+def test_auto_source_workspaces_config(tmp_path):
+    """Tier 1 zero-config option parses: auto-source ON by default, overridable.
+
+    The wrapper reads auto_source_workspaces via MD_ROS_AUTOSOURCE and
+    ros_workspace_search via MD_ROS_WS_SEARCH; on a real robot this finds a
+    built px4_msgs workspace with no per-robot config. Defaults must keep
+    auto-source ON (that is the zero-config promise) with no custom roots.
+    """
+    base = AgentConfig(
+        robot_id="r", buffer_seconds=60.0, output_dir=str(tmp_path),
+        topics=[TopicConfig(name="/cmd_vel", type="geometry_msgs/msg/Twist")],
+    )
+    assert base.auto_source_workspaces is True
+    assert base.ros_workspace_search == []
+    tuned = AgentConfig(
+        robot_id="r", buffer_seconds=60.0, output_dir=str(tmp_path),
+        topics=[TopicConfig(name="/cmd_vel", type="geometry_msgs/msg/Twist")],
+        auto_source_workspaces=False,
+        ros_workspace_search=["/home/me/px4_ws/install", "/opt/vendor/install"],
+    )
+    assert tuned.auto_source_workspaces is False
+    assert tuned.ros_workspace_search == [
+        "/home/me/px4_ws/install", "/opt/vendor/install"]
+
+
 def test_trigger_from_label():
     assert _trigger_from_label("anomaly:stall") == "anomaly:stall"
     assert _trigger_from_label("anomaly:dropout:/scan") == "anomaly:dropout:/scan"
