@@ -56,6 +56,27 @@ def _last_handler(app):
     return route.endpoint
 
 
+def test_ros_setup_files_config(tmp_path):
+    """The overlay-workspace option parses: defaults empty, accepts a list.
+
+    This is the config half of the px4_msgs / custom-message fix; the wrapper
+    sources these paths (MD_ROS_SETUP_FILES) so the agent can import types built
+    in a user's own colcon workspace, which base ROS does not expose.
+    """
+    base = AgentConfig(
+        robot_id="r", buffer_seconds=60.0, output_dir=str(tmp_path),
+        topics=[TopicConfig(name="/cmd_vel", type="geometry_msgs/msg/Twist")],
+    )
+    assert base.ros_setup_files == []
+    with_overlay = AgentConfig(
+        robot_id="r", buffer_seconds=60.0, output_dir=str(tmp_path),
+        topics=[TopicConfig(name="/cmd_vel", type="geometry_msgs/msg/Twist")],
+        ros_setup_files=["/home/ros/ws/install/setup.bash", "/opt/px4/setup.bash"],
+    )
+    assert with_overlay.ros_setup_files == [
+        "/home/ros/ws/install/setup.bash", "/opt/px4/setup.bash"]
+
+
 def test_trigger_from_label():
     assert _trigger_from_label("anomaly:stall") == "anomaly:stall"
     assert _trigger_from_label("anomaly:dropout:/scan") == "anomaly:dropout:/scan"

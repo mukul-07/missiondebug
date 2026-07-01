@@ -35,5 +35,25 @@ if [ -z "$ROS_SOURCED" ]; then
     exit 1
 fi
 
+# Source any additional overlay workspaces. Base ROS above only exposes the
+# packages installed into /opt/ros/<distro>; custom message packages (e.g.
+# px4_msgs) usually live in the user's own colcon workspace, which must be
+# sourced separately for the agent to import their types. MD_ROS_SETUP_FILES is
+# a colon-separated list of setup.bash paths (like PATH); the supervising shim
+# sets it from the `ros_setup_files` config key, or a standalone install can
+# export it directly. Missing files are skipped with a warning, never fatal.
+if [ -n "${MD_ROS_SETUP_FILES:-}" ]; then
+    IFS=':' read -ra _MD_SETUPS <<< "$MD_ROS_SETUP_FILES"
+    for _s in "${_MD_SETUPS[@]}"; do
+        [ -z "$_s" ] && continue
+        if [ -f "$_s" ]; then
+            # shellcheck disable=SC1090
+            source "$_s"
+        else
+            echo "missiondebug-agent: overlay setup file not found, skipping: $_s" >&2
+        fi
+    done
+fi
+
 # Run the agent.
 exec "$PYTHON" -m missiondebug_agent.main "$@"

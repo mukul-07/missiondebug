@@ -231,6 +231,13 @@ class AgentConfig(BaseModel):
     max_total_bytes: int | None = Field(default=None, ge=0)
     topics: list[TopicConfig]
     output_dir: str = "./sessions"
+    # Extra ROS 2 overlay workspaces to source before the agent runs, as paths
+    # to their setup.bash (e.g. a colcon workspace's install/setup.bash). Base
+    # ROS only exposes /opt/ros/<distro>; custom message packages (px4_msgs and
+    # the like) live in a user workspace that must be sourced for the agent to
+    # import their types. The wrapper reads these via the MD_ROS_SETUP_FILES env
+    # var, which the supervising shim sets from this key. Empty = base ROS only.
+    ros_setup_files: list[str] = []
     http_host: str = "127.0.0.1"
     http_port: int = 7000
     # When set, serve the local control API on this Unix domain socket instead
