@@ -86,6 +86,41 @@ def _is_resolvable(type_str: str) -> bool:
 _HIDDEN = {"/parameter_events", "/rosout"}
 
 
+def settle_graph(read, spin, timeout_s: float, quiet_reads: int = 5,
+                 clock=None) -> list:
+    """Spin until the graph is STABLE, then return the last read.
+
+    Stable = the SET of topic names is non-empty and unchanged for quiet_reads
+    consecutive reads (~0.5s of continuous spinning at 0.1s per spin). DDS
+    announcements arrive in bursts spaced longer than one read, so comparing
+    only the COUNT across 2 reads (the old check) routinely declared a partial
+    graph converged: a scan could see 1 topic, 0 topics, or all of them
+    depending on timing. Comparing the name SET also catches one topic
+    replacing another between reads. If the graph never stabilizes (or stays
+    empty), returns whatever the last read saw when the window closed.
+
+    read/spin/clock are injected so this is testable without rclpy.
+    """
+    import time as _time
+    now = clock or _time.monotonic
+    deadline = now() + timeout_s
+    result: list = []
+    prev: set | None = None
+    stable = 0
+    while now() < deadline:
+        spin()
+        result = read()
+        names = {n for n, _ in result}
+        if names and names == prev:
+            stable += 1
+            if stable >= quiet_reads:
+                break
+        else:
+            stable = 0
+        prev = names
+    return result
+
+
 def classify_topics(names_and_types: list[tuple[str, list[str]]]) -> list[dict]:
     """Pure: turn raw (name, [types]) graph output into the discovery dicts.
 
@@ -136,31 +171,13 @@ def discover_topics(timeout_s: float = 1.0) -> list[dict]:
 
         # A brand-new node must let DDS discovery settle before the graph is
         # visible: get_topic_names_and_types() returns [] until the node has been
-        # spun long enough to receive other participants' announcements. The old
-        # code broke out on the first non-empty read, which on a fresh node was
-        # often still incomplete (or returned [] forever if it never spun enough).
-        #
-        # Spin actively for a settle window, and keep going until the count has
-        # been STABLE across two reads (graph converged) or the window elapses. Use
-        # wall-clock via spin iterations (node clock may be sim/zero on some setups).
-        import time as _time
-
-        deadline = _time.monotonic() + max(timeout_s, 2.0)
-        names_and_types: list[tuple[str, list[str]]] = []
-        prev_count = -1
-        stable = 0
-        while _time.monotonic() < deadline:
-            rclpy.spin_once(node, timeout_sec=0.1)
-            names_and_types = node.get_topic_names_and_types()
-            count = len(names_and_types)
-            # converged: same non-zero count seen twice in a row
-            if count > 0 and count == prev_count:
-                stable += 1
-                if stable >= 2:
-                    break
-            else:
-                stable = 0
-            prev_count = count
+        # spun long enough to receive other participants' announcements. The
+        # graph trickles in over 1-2s, so require real stability (see
+        # settle_graph) instead of breaking on the first plateau.
+        names_and_types = settle_graph(
+            read=node.get_topic_names_and_types,
+            spin=lambda: rclpy.spin_once(node, timeout_sec=0.1),
+            timeout_s=max(timeout_s, 3.0))
 
         return classify_topics(names_and_types)
     except Exception:

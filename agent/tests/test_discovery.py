@@ -88,3 +88,55 @@ def test_discover_topics_returns_empty_without_ros(monkeypatch):
 
     monkeypatch.setattr(builtins, "__import__", no_rclpy)
     assert disc.discover_topics() == []
+
+
+# --- settle_graph: the DDS settle loop, driven with a fake clock ------------
+# Each spin() advances the fake clock 0.1s and steps through a scripted
+# sequence of graph reads (the last read repeats once the script runs out).
+
+def _run_settle(script, timeout_s=3.0, quiet_reads=5):
+    t = [0.0]
+    i = [0]
+
+    def spin():
+        t[0] += 0.1
+        i[0] = min(i[0] + 1, len(script) - 1)
+
+    def read():
+        return script[i[0]]
+
+    return disc.settle_graph(read, spin, timeout_s, quiet_reads, clock=lambda: t[0])
+
+
+def test_settle_waits_past_an_early_plateau():
+    # The old count-based check returned after seeing [a] twice (0.2s); the
+    # graph then grew to 3 topics. settle_graph must ride out the plateau.
+    a, b, c = ("/a", ["T"]), ("/b", ["T"]), ("/c", ["T"])
+    script = [[], [a], [a], [a], [a, b], [a, b, c]] + [[a, b, c]] * 20
+    out = _run_settle(script)
+    assert {n for n, _ in out} == {"/a", "/b", "/c"}
+
+
+def test_settle_needs_the_set_stable_not_the_count():
+    # Same count, different composition -> not converged yet.
+    a, b, c = ("/a", ["T"]), ("/b", ["T"]), ("/c", ["T"])
+    script = [[a, b], [a, c], [b, c]] + [[a, b, c]] * 20
+    out = _run_settle(script)
+    assert {n for n, _ in out} == {"/a", "/b", "/c"}
+
+
+def test_settle_breaks_early_once_stable():
+    a = ("/a", ["T"])
+    t = [0.0]
+
+    def spin():
+        t[0] += 0.1
+
+    out = disc.settle_graph(lambda: [a], spin, timeout_s=3.0, quiet_reads=5,
+                            clock=lambda: t[0])
+    assert out == [a] and t[0] < 1.0   # stopped well before the window closed
+
+
+def test_settle_empty_graph_times_out_empty():
+    out = _run_settle([[]] * 5, timeout_s=1.0)
+    assert out == []
