@@ -158,3 +158,39 @@ def test_classify_includes_publisher_counts():
 def test_classify_publisher_count_unknown_when_absent():
     out = classify_topics([("/cmd_vel", ["geometry_msgs/msg/Twist"])])
     assert out[0]["publishers"] is None
+
+
+# --- persistent node plumbing ------------------------------------------------
+
+def test_discover_topics_uses_a_persistent_node(monkeypatch):
+    # A fake rclpy: discover_topics must create the node ONCE and reuse it on
+    # the next call (the warm-cache fix for partial scans at scale).
+    import sys
+    import types
+
+    created = []
+
+    class FakeNode:
+        def get_topic_names_and_types(self):
+            return [("/a", ["std_msgs/msg/String"])]
+
+        def count_publishers(self, name):
+            return 1
+
+    import time
+
+    fake = types.ModuleType("rclpy")
+    fake.ok = lambda: True
+    fake.init = lambda: None
+    fake.create_node = lambda name: created.append(name) or FakeNode()
+    # sleep like the real spin_once, or the daemon spinner busy-loops and
+    # burns CPU for the rest of the suite
+    fake.spin_once = lambda node, timeout_sec=0.0: time.sleep(timeout_sec or 0.01)
+    monkeypatch.setitem(sys.modules, "rclpy", fake)
+    monkeypatch.setattr(disc, "_NODE", {"node": None})
+
+    out1 = disc.discover_topics(timeout_s=0.3)
+    out2 = disc.discover_topics(timeout_s=0.3)
+    assert created == ["missiondebug_discovery"]   # one node, reused
+    assert [t["name"] for t in out1] == ["/a"] == [t["name"] for t in out2]
+    assert out1[0]["publishers"] == 1

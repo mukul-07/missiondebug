@@ -7,8 +7,16 @@ type, whether that type is resolvable (importable) here, and whether it is a
 This is deliberately INDEPENDENT of the capture path. The agent has two capture
 engines: a C++ module (the default, faster) and a Python RosBridge fallback. Only
 the Python path holds an rclpy Node; on the C++ path there is no Python node at
-all. So discovery uses its OWN short-lived rclpy node and tears it down after,
-which means GET /topics works the same on both paths.
+all. So discovery uses its OWN rclpy node, which means GET /topics works the same
+on both paths.
+
+The node is PERSISTENT (created on first use, spun by a daemon thread for the
+life of the process). A fresh node pays 1-6s of DDS participant discovery before
+it can see the graph; under load, a bounded scan window then returns a PARTIAL
+snapshot, different on every call (observed live: 25 stable topics scanned as
+16, 25, 6, 4, 17). A warm node's graph cache is kept current by DDS continuously,
+so every scan after the first is complete and fast, the same approach as the
+ros2 CLI daemon.
 
 Discovery is best-effort: ROS graph discovery (DDS) is eventually-consistent, so a
 topic may briefly show no type, and a freshly-started publisher may not appear yet.
@@ -18,6 +26,7 @@ We return what is visible and never raise to the caller.
 from __future__ import annotations
 
 import re
+import threading
 
 from .ros_bridge import _resolve_msg_type
 
@@ -159,36 +168,69 @@ def classify_topics(
     return out
 
 
+# The persistent discovery node, created lazily on the first /topics call and
+# never torn down (the daemon thread and node live for the process lifetime;
+# rclpy is intentionally NOT shut down, the OS reclaims it at exit).
+_NODE_LOCK = threading.Lock()
+_NODE: dict = {"node": None}
+
+
+def _persistent_node():
+    """Create (once) and return the long-lived discovery node, or None if
+    rclpy is unavailable. A daemon thread keeps it spinning so its DDS graph
+    cache stays current between calls; scans then read a WARM, complete view
+    instead of paying participant discovery from scratch every time."""
+    try:
+        import rclpy
+    except Exception:
+        return None
+    with _NODE_LOCK:
+        if _NODE["node"] is not None:
+            return _NODE["node"]
+        try:
+            if not rclpy.ok():
+                rclpy.init()
+            node = rclpy.create_node("missiondebug_discovery")
+        except Exception:
+            return None
+
+        def _spin():
+            # Only this thread ever spins the node (concurrent spin_once on
+            # one node raises). Graph reads from request threads are safe.
+            try:
+                while rclpy.ok():
+                    rclpy.spin_once(node, timeout_sec=0.2)
+            except Exception:
+                pass   # context torn down; the process is exiting
+
+        threading.Thread(target=_spin, name="md-discovery-spin",
+                         daemon=True).start()
+        _NODE["node"] = node
+        return node
+
+
 def discover_topics(timeout_s: float = 1.0) -> list[dict]:
     """Return the visible ROS 2 topics as a sorted list of dicts:
-        {name, type, resolvable, recommended (bool), reason (str|None)}
+        {name, type, resolvable, recommended (bool), reason (str|None),
+         large, publishers}
 
     Hidden topics (parameter_events, rosout) are filtered out. A topic with
     multiple types reports the first; one with no type yet is kept with an empty
     type and resolvable=False. Never raises: returns [] if rclpy is unavailable.
     """
-    try:
-        import rclpy
-        from rclpy.node import Node
-    except Exception:
+    node = _persistent_node()
+    if node is None:
         return []
-
-    created_context = False
-    node: "Node | None" = None
     try:
-        if not rclpy.ok():
-            rclpy.init()
-            created_context = True
-        node = rclpy.create_node("missiondebug_discovery")
+        import time as _time
 
-        # A brand-new node must let DDS discovery settle before the graph is
-        # visible: get_topic_names_and_types() returns [] until the node has been
-        # spun long enough to receive other participants' announcements. The
-        # graph trickles in over 1-2s, so require real stability (see
-        # settle_graph) instead of breaking on the first plateau.
+        # The daemon thread owns spinning, so the settle loop just paces its
+        # reads. First-ever call: the node is cold and the graph trickles in
+        # (bounded by the window, may be partial under heavy load). Every call
+        # after that reads a warm cache: complete, stable within ~0.5s.
         names_and_types = settle_graph(
             read=node.get_topic_names_and_types,
-            spin=lambda: rclpy.spin_once(node, timeout_sec=0.1),
+            spin=lambda: _time.sleep(0.1),
             timeout_s=max(timeout_s, 3.0))
 
         # Publisher count per topic, so the UI can tell a live robot signal
@@ -206,14 +248,3 @@ def discover_topics(timeout_s: float = 1.0) -> list[dict]:
         return classify_topics(names_and_types, publisher_counts)
     except Exception:
         return []
-    finally:
-        try:
-            if node is not None:
-                node.destroy_node()
-        except Exception:
-            pass
-        try:
-            if created_context and rclpy.ok():
-                rclpy.shutdown()
-        except Exception:
-            pass
