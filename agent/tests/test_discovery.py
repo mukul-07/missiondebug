@@ -87,7 +87,7 @@ def test_discover_topics_returns_empty_without_ros(monkeypatch):
         return real(name, *a, **k)
 
     monkeypatch.setattr(builtins, "__import__", no_rclpy)
-    assert disc.discover_topics() == []
+    assert disc.discover_topics() == {"topics": [], "settled": True}
 
 
 # --- settle_graph: the DDS settle loop, driven with a fake clock ------------
@@ -108,21 +108,32 @@ def _run_settle(script, timeout_s=3.0, quiet_reads=5):
     return disc.settle_graph(read, spin, timeout_s, quiet_reads, clock=lambda: t[0])
 
 
+def test_settle_reports_unsettled_on_deadline():
+    # A graph still churning when the window closes -> settled False, so the
+    # caller knows the snapshot may be partial (the post-restart cold scan).
+    a, b = ("/a", ["T"]), ("/b", ["T"])
+    script = [[a], [b]] * 50   # alternates forever, never stable
+    out, settled = _run_settle(script, timeout_s=1.0)
+    assert settled is False
+
+
 def test_settle_waits_past_an_early_plateau():
     # The old count-based check returned after seeing [a] twice (0.2s); the
     # graph then grew to 3 topics. settle_graph must ride out the plateau.
     a, b, c = ("/a", ["T"]), ("/b", ["T"]), ("/c", ["T"])
     script = [[], [a], [a], [a], [a, b], [a, b, c]] + [[a, b, c]] * 20
-    out = _run_settle(script)
+    out, settled = _run_settle(script)
     assert {n for n, _ in out} == {"/a", "/b", "/c"}
+    assert settled is True
 
 
 def test_settle_needs_the_set_stable_not_the_count():
     # Same count, different composition -> not converged yet.
     a, b, c = ("/a", ["T"]), ("/b", ["T"]), ("/c", ["T"])
     script = [[a, b], [a, c], [b, c]] + [[a, b, c]] * 20
-    out = _run_settle(script)
+    out, settled = _run_settle(script)
     assert {n for n, _ in out} == {"/a", "/b", "/c"}
+    assert settled is True
 
 
 def test_settle_breaks_early_once_stable():
@@ -132,14 +143,15 @@ def test_settle_breaks_early_once_stable():
     def spin():
         t[0] += 0.1
 
-    out = disc.settle_graph(lambda: [a], spin, timeout_s=3.0, quiet_reads=5,
-                            clock=lambda: t[0])
-    assert out == [a] and t[0] < 1.0   # stopped well before the window closed
+    out, settled = disc.settle_graph(lambda: [a], spin, timeout_s=3.0,
+                                     quiet_reads=5, clock=lambda: t[0])
+    assert out == [a] and settled is True
+    assert t[0] < 1.0   # stopped well before the window closed
 
 
 def test_settle_empty_graph_times_out_empty():
-    out = _run_settle([[]] * 5, timeout_s=1.0)
-    assert out == []
+    out, settled = _run_settle([[]] * 5, timeout_s=1.0)
+    assert out == [] and settled is False
 
 
 # --- publisher counts: telling a robot signal from our own echo -------------
@@ -187,10 +199,14 @@ def test_discover_topics_uses_a_persistent_node(monkeypatch):
     # burns CPU for the rest of the suite
     fake.spin_once = lambda node, timeout_sec=0.0: time.sleep(timeout_sec or 0.01)
     monkeypatch.setitem(sys.modules, "rclpy", fake)
-    monkeypatch.setattr(disc, "_NODE", {"node": None})
+    monkeypatch.setattr(disc, "_NODE", {"node": None, "warmed": False})
 
     out1 = disc.discover_topics(timeout_s=0.3)
     out2 = disc.discover_topics(timeout_s=0.3)
     assert created == ["missiondebug_discovery"]   # one node, reused
-    assert [t["name"] for t in out1] == ["/a"] == [t["name"] for t in out2]
-    assert out1[0]["publishers"] == 1
+    assert [t["name"] for t in out1["topics"]] == ["/a"] \
+        == [t["name"] for t in out2["topics"]]
+    # a COLD node's first scan is never presented as settled (it can fake
+    # convergence mid-DDS-discovery); once warmed, scans are trusted.
+    assert out1["settled"] is False and out2["settled"] is True
+    assert out1["topics"][0]["publishers"] == 1

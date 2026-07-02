@@ -96,8 +96,8 @@ _HIDDEN = {"/parameter_events", "/rosout"}
 
 
 def settle_graph(read, spin, timeout_s: float, quiet_reads: int = 5,
-                 clock=None) -> list:
-    """Spin until the graph is STABLE, then return the last read.
+                 clock=None) -> tuple[list, bool]:
+    """Spin until the graph is STABLE, then return (last read, settled).
 
     Stable = the SET of topic names is non-empty and unchanged for quiet_reads
     consecutive reads (~0.5s of continuous spinning at 0.1s per spin). DDS
@@ -105,8 +105,14 @@ def settle_graph(read, spin, timeout_s: float, quiet_reads: int = 5,
     only the COUNT across 2 reads (the old check) routinely declared a partial
     graph converged: a scan could see 1 topic, 0 topics, or all of them
     depending on timing. Comparing the name SET also catches one topic
-    replacing another between reads. If the graph never stabilizes (or stays
-    empty), returns whatever the last read saw when the window closed.
+    replacing another between reads.
+
+    settled=True means the stability condition was met; False means the window
+    closed first, so the returned graph MAY be a partial snapshot (typical for
+    the first scan of a fresh node while DDS discovery is still trickling in,
+    e.g. right after the agent restarts to apply settings). Callers can
+    surface that so a UI keeps its previous complete view instead of rendering
+    the partial one as truth.
 
     read/spin/clock are injected so this is testable without rclpy.
     """
@@ -123,11 +129,11 @@ def settle_graph(read, spin, timeout_s: float, quiet_reads: int = 5,
         if names and names == prev:
             stable += 1
             if stable >= quiet_reads:
-                break
+                return result, True
         else:
             stable = 0
         prev = names
-    return result
+    return result, False
 
 
 def classify_topics(
@@ -172,7 +178,7 @@ def classify_topics(
 # never torn down (the daemon thread and node live for the process lifetime;
 # rclpy is intentionally NOT shut down, the OS reclaims it at exit).
 _NODE_LOCK = threading.Lock()
-_NODE: dict = {"node": None}
+_NODE: dict = {"node": None, "warmed": False}
 
 
 def _persistent_node():
@@ -209,18 +215,26 @@ def _persistent_node():
         return node
 
 
-def discover_topics(timeout_s: float = 1.0) -> list[dict]:
-    """Return the visible ROS 2 topics as a sorted list of dicts:
+def discover_topics(timeout_s: float = 1.0) -> dict:
+    """Return {"topics": [...], "settled": bool}.
+
+    topics: the visible ROS 2 topics as a sorted list of dicts:
         {name, type, resolvable, recommended (bool), reason (str|None),
          large, publishers}
+    settled: False when the scan window closed before the graph stabilized,
+        so the list MAY be a partial snapshot (typical for the first scan
+        after the agent restarts, while its fresh DDS participant is still
+        discovering peers). A UI should keep its previous complete view
+        rather than render a partial one as truth.
 
     Hidden topics (parameter_events, rosout) are filtered out. A topic with
     multiple types reports the first; one with no type yet is kept with an empty
-    type and resolvable=False. Never raises: returns [] if rclpy is unavailable.
+    type and resolvable=False. Never raises: returns an empty, settled result
+    if rclpy is unavailable (no ROS = nothing more to wait for).
     """
     node = _persistent_node()
     if node is None:
-        return []
+        return {"topics": [], "settled": True}
     try:
         import time as _time
 
@@ -228,10 +242,20 @@ def discover_topics(timeout_s: float = 1.0) -> list[dict]:
         # reads. First-ever call: the node is cold and the graph trickles in
         # (bounded by the window, may be partial under heavy load). Every call
         # after that reads a warm cache: complete, stable within ~0.5s.
-        names_and_types = settle_graph(
+        names_and_types, settled = settle_graph(
             read=node.get_topic_names_and_types,
             spin=lambda: _time.sleep(0.1),
             timeout_s=max(timeout_s, 3.0))
+
+        # A COLD node can fake convergence: DDS announcements arrive in
+        # bursts, so 0.5s of quiet mid-discovery passes the stability check
+        # with a partial graph. Never present a scan as settled until the
+        # node has converged once; from then on the cache is warm and the
+        # stability check is trustworthy.
+        if not _NODE["warmed"]:
+            if settled:
+                _NODE["warmed"] = True   # trust the NEXT scan onwards
+            settled = False
 
         # Publisher count per topic, so the UI can tell a live robot signal
         # from a topic that exists only because of subscriptions (typically our
@@ -245,6 +269,11 @@ def discover_topics(timeout_s: float = 1.0) -> list[dict]:
             except Exception:
                 pass
 
-        return classify_topics(names_and_types, publisher_counts)
+        return {"topics": classify_topics(names_and_types, publisher_counts),
+                "settled": settled}
     except Exception:
-        return []
+        # A scan that BLEW UP is a transient (e.g. the rclpy context torn
+        # down mid-request during an agent restart), not an authoritative
+        # empty graph; unlike the no-rclpy case above it must not claim
+        # settled, or a consumer could take the empty list as truth.
+        return {"topics": [], "settled": False}

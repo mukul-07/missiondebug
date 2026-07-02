@@ -248,13 +248,16 @@ def build_app(
         types report False, instead of silently skipping), and whether it is
         `recommended` to capture (with a `reason`).
 
-        Path-independent: uses a short-lived discovery node, so it works whether
+        Path-independent: uses a persistent discovery node, so it works whether
         capture runs on the C++ or the Python engine. Best-effort and additive:
-        returns `{"topics": []}` if ROS discovery is unavailable; older clients
-        that never call it are unaffected.
+        returns `{"topics": [], "settled": true}` if ROS discovery is
+        unavailable; older clients that never call it are unaffected.
+        `settled: false` means the scan window closed before the graph
+        stabilized (typically the first scan after a restart), so the list may
+        be partial and the caller should prefer its previous complete view.
         """
         from .discovery import discover_topics
-        return {"topics": discover_topics()}
+        return discover_topics()
 
     @app.post(
         "/sessions/save",
