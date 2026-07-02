@@ -121,13 +121,24 @@ def settle_graph(read, spin, timeout_s: float, quiet_reads: int = 5,
     return result
 
 
-def classify_topics(names_and_types: list[tuple[str, list[str]]]) -> list[dict]:
+def classify_topics(
+    names_and_types: list[tuple[str, list[str]]],
+    publisher_counts: dict[str, int] | None = None,
+) -> list[dict]:
     """Pure: turn raw (name, [types]) graph output into the discovery dicts.
 
     Filters hidden topics, takes the first type, flags resolvable + recommended,
     and sorts by name. Separated from the ROS plumbing so it is unit-testable
     without a running graph.
+
+    publisher_counts maps topic name -> number of publishers on the graph. A
+    topic appears in the graph when ANYTHING holds an endpoint on it, including
+    this agent's own capture subscriptions, so a configured topic whose real
+    publisher died long ago still lists forever (a self-sustaining ghost). The
+    count lets the UI tell "a robot signal" from "our own echo": publishers == 0
+    means advertised-but-silent. None/missing = unknown (caller had no counts).
     """
+    counts = publisher_counts or {}
     out: list[dict] = []
     for name, types in names_and_types:
         if name in _HIDDEN:
@@ -142,6 +153,7 @@ def classify_topics(names_and_types: list[tuple[str, list[str]]]) -> list[dict]:
             "recommended": recommend,
             "reason": reason,
             "large": bool(type_str and _LARGE_TYPE.search(type_str)),
+            "publishers": counts.get(name),
         })
     out.sort(key=lambda t: t["name"])
     return out
@@ -179,7 +191,19 @@ def discover_topics(timeout_s: float = 1.0) -> list[dict]:
             spin=lambda: rclpy.spin_once(node, timeout_sec=0.1),
             timeout_s=max(timeout_s, 3.0))
 
-        return classify_topics(names_and_types)
+        # Publisher count per topic, so the UI can tell a live robot signal
+        # from a topic that exists only because of subscriptions (typically our
+        # own capture node's). The agent publishes no ROS topics itself, so a
+        # plain count needs no self-exclusion. Best-effort per topic: a count
+        # that fails stays None (unknown) rather than failing the scan.
+        publisher_counts: dict[str, int] = {}
+        for name, _types in names_and_types:
+            try:
+                publisher_counts[name] = node.count_publishers(name)
+            except Exception:
+                pass
+
+        return classify_topics(names_and_types, publisher_counts)
     except Exception:
         return []
     finally:

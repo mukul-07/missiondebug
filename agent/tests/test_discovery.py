@@ -140,3 +140,21 @@ def test_settle_breaks_early_once_stable():
 def test_settle_empty_graph_times_out_empty():
     out = _run_settle([[]] * 5, timeout_s=1.0)
     assert out == []
+
+
+# --- publisher counts: telling a robot signal from our own echo -------------
+
+def test_classify_includes_publisher_counts():
+    out = classify_topics(
+        [("/cmd_vel", ["geometry_msgs/msg/Twist"]), ("/scan", ["sensor_msgs/msg/LaserScan"])],
+        publisher_counts={"/cmd_vel": 2, "/scan": 0},
+    )
+    by_name = {t["name"]: t for t in out}
+    assert by_name["/cmd_vel"]["publishers"] == 2
+    assert by_name["/scan"]["publishers"] == 0   # advertised (e.g. by our own
+    # capture subscription) but nothing publishing -- the ghost-topic case
+
+
+def test_classify_publisher_count_unknown_when_absent():
+    out = classify_topics([("/cmd_vel", ["geometry_msgs/msg/Twist"])])
+    assert out[0]["publishers"] is None
