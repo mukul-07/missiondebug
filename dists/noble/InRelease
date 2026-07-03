@@ -1,0 +1,41 @@
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA256
+
+Architectures: amd64 arm64
+Codename: noble
+Components: main
+Date: Fri, 03 Jul 2026 19:28:29 +0000
+Label: MissionDebug
+Origin: MissionDebug
+Suite: noble
+MD5Sum:
+ 855befb93b36e93da92d127fd15a9d51              152 Release
+ f9ef2b67d629805690bdc4bfd1c266a0            60924 main/binary-amd64/Packages
+ 013c6ba899bd61b1af2870825b02db10             7899 main/binary-amd64/Packages.gz
+ 50a1fa3aaffc797d0b8ef5911de6d056            60924 main/binary-arm64/Packages
+ 6a98856fd1354a06f62aa20bb522ed08             7904 main/binary-arm64/Packages.gz
+SHA1:
+ 54f47ef20e01e52ba9d81973099ece83431f5678              152 Release
+ 61ded158f442c1080a81cfe86ce47364c62170d4            60924 main/binary-amd64/Packages
+ b3c447e2216c646c8e536e3de3a163c9bdac5c21             7899 main/binary-amd64/Packages.gz
+ 211b5e2ac449f6f831e60648a1b6d9a2b1088d66            60924 main/binary-arm64/Packages
+ f9e5a097c8cc739058a26375898714dd499b71ed             7904 main/binary-arm64/Packages.gz
+SHA256:
+ 8ee8ac778952ecc4f073855c08f7fa80b1c7dada196238ed5c7eae195c5c3036              152 Release
+ e6624a026d26237e5f15b3259a283c1af6c9452cc6701ebf027973a023a21027            60924 main/binary-amd64/Packages
+ 2140fa3ad768d7f89808e4044eb3c78c61553516854d7f3ec89fe8dde9cf5a87             7899 main/binary-amd64/Packages.gz
+ 6e963dda4a06f146f95a5a2220a1c058a78ffd070595d362b216f4436ea2d21e            60924 main/binary-arm64/Packages
+ 659c6982744329778cb4724c01b14e91cea032ce521fea3c11c060d554ebb4d7             7904 main/binary-arm64/Packages.gz
+SHA512:
+ 7fdb280d6e2fc50c449f562fc61abbc3b8625d97ddba9f2ac42615090a75f3794faaf781061b9ffffd03ba033f0aeec47c1421cb23a1c51f5a235bb10c6f0235              152 Release
+ f08d60e269e888de98e9ffefff718f74cd76888f3c7acb8e5fdbec1169e5f360cdb0e18a4943dd1998c0a371a33072f6278cc52b0929f4ee22341aad627452ae            60924 main/binary-amd64/Packages
+ 3b3d811d76d458ebd5a9ee8cada802def9050c976846a4d7f39aa1a5c2f9cbc4f193225fdd59f5f3356fa2cc039f73a6c85b70ebd7bf23ef181564ed58b53d52             7899 main/binary-amd64/Packages.gz
+ f2d866432d2d2fdb350834984e51cc32a90f5be1784790ba2860bb2221ea28edd7dabfe26cc8fb2cb2c21426b445eaa4a117fe13815c12291b5cdceebf09657a            60924 main/binary-arm64/Packages
+ f068d3d04db7d8acfec15434001ef36ca94b869e0960156f2a268d7edd6faaf5e8552a5e67b3028fd98e5483a30388530698f2d19baac1bfb479f1d214077583             7904 main/binary-arm64/Packages.gz
+-----BEGIN PGP SIGNATURE-----
+
+iHUEARYIAB0WIQT5maZImb59Kgw7aZp5502LYqzUCwUCakgNXQAKCRB5502LYqzU
+C0blAQCiuuCeCzsrhBQ8k9ZCSZxkGkFgzb56ooDeGMp0BpkPdQEA/DRh4EiUAlad
+pbvcYSJ61PY+q9uK3L8kiOxWxOE28Qo=
+=jzac
+-----END PGP SIGNATURE-----

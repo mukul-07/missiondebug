@@ -1,0 +1,15 @@
+<!doctype html>
+<title>MissionDebug apt repository</title>
+<style>body{font-family:system-ui;max-width:42rem;margin:3rem auto;padding:0 1rem}pre{background:#f4f4f4;padding:1rem;overflow-x:auto}</style>
+<h1>MissionDebug apt repository</h1>
+<p>Signed apt repository for <a href="https://github.com/mukul-07/missiondebug">MissionDebug</a>.
+Suites: <code>jammy</code> (Ubuntu 22.04 / ROS 2 Humble), <code>noble</code> (Ubuntu 24.04 / ROS 2 Jazzy).</p>
+<pre>
+sudo install -d /etc/apt/keyrings
+curl -fsSL https://mukul-07.github.io/missiondebug/missiondebug-archive-key.asc \
+  | sudo gpg --dearmor -o /etc/apt/keyrings/missiondebug.gpg
+echo "deb [signed-by=/etc/apt/keyrings/missiondebug.gpg] https://mukul-07.github.io/missiondebug $(lsb_release -cs) main" \
+  | sudo tee /etc/apt/sources.list.d/missiondebug.list
+sudo apt update
+sudo apt install missiondebug-agent missiondebug-backend missiondebug-web
+</pre>
