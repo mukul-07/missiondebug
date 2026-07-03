@@ -18,7 +18,7 @@ from pydantic import BaseModel
 
 from .config import AgentConfig
 from .mcap_writer import SessionMetadata, write_session
-from .ring_buffer import RingBuffer
+from .ring_buffer import BufferedMessage, RingBuffer
 from .summarizer import build_summary
 
 if TYPE_CHECKING:
@@ -84,6 +84,37 @@ def _filename(robot_id: str) -> str:
     return f"{robot_id}_{ts}.mcap"
 
 
+def _trim_stale(
+    snap: list[BufferedMessage], config: AgentConfig
+) -> list[BufferedMessage]:
+    """Drop, per topic, messages older than (newest snapshot timestamp - that
+    topic's window).
+
+    Buffer eviction only fires when a NEW message arrives on a topic, so a
+    topic that goes SILENT keeps its last window forever and the saved file
+    spans the gap to the freshest topic (a "90s buffer" reading as hours).
+
+    This is deliberately a pure function over the SNAPSHOT, not a ring method:
+    the C++ capture engine's adapter exposes only snapshot(), so a ring-level
+    evict (RingBuffer.evict_stale) never runs on that path. Same lesson as the
+    0.6.2 empty-buffer fix: put the behavior at the shared surface both
+    engines pass through. Windows mirror how both engines were configured:
+    per-topic ring_seconds, else the global buffer_seconds.
+    """
+    if not snap:
+        return snap
+    default_ns = int(config.buffer_seconds * 1e9)
+    window_ns = {
+        t.name: int(t.ring_seconds * 1e9) if t.ring_seconds else default_ns
+        for t in config.topics
+    }
+    newest = max(m.timestamp_ns for m in snap)
+    return [
+        m for m in snap
+        if m.timestamp_ns >= newest - window_ns.get(m.topic, default_ns)
+    ]
+
+
 def _empty_buffer_detail(config: AgentConfig) -> str:
     """Diagnostic message for an empty-buffer capture.
 
@@ -127,14 +158,14 @@ def save_now(
     and posts the public S3 URL to the hub instead of the agent's local
     URL. Upload failure is non-fatal — falls back to agent-served URL.
     """
-    # Trim each topic to its window relative to the freshest captured message
-    # before snapshotting: a topic that went silent still holds its last window
-    # (append-time eviction only fires on new messages), which would make the
-    # saved file span the gap to the freshest topic (a "90s buffer" reading as
-    # hours). After this the capture is one contiguous window, not a stale ring
-    # next to a live one.
-    ring.evict_stale()
-    snap = ring.snapshot()
+    # Trim each topic to its window relative to the freshest captured message,
+    # so the saved file is one contiguous window, not a stale ring next to a
+    # live one (see _trim_stale). The trim happens on the SNAPSHOT because the
+    # C++ engine's adapter has no ring-level evict; where the Python ring's
+    # evict_stale exists, call it too so the stale messages' memory is freed.
+    if hasattr(ring, "evict_stale"):
+        ring.evict_stale()
+    snap = _trim_stale(ring.snapshot(), config)
     if not snap:
         raise HTTPException(status_code=409, detail=_empty_buffer_detail(config))
 
