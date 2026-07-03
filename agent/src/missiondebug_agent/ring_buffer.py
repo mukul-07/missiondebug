@@ -97,6 +97,36 @@ class RingBuffer:
             if self._max_total_bytes is not None:
                 self._enforce_global_budget_locked()
 
+    def evict_stale(self, now_ns: int | None = None) -> None:
+        """Drop, per topic, messages older than (reference - that topic's window).
+
+        Per-topic eviction in `append` only fires when a NEW message arrives on
+        that topic, so a topic that goes SILENT keeps its last window forever.
+        A capture then contains a live topic's recent data next to a quiet
+        topic's hours-old data, and the saved file spans the gap between them
+        (a "90s buffer" that reads as 172 minutes). Calling this right before a
+        save trims every topic to its window as of the reference time.
+
+        reference = now_ns if given, else the NEWEST message timestamp across
+        all topics (data-relative). Data-relative is the right default for a
+        save: it evicts a silent topic's stale window relative to the freshest
+        data actually captured, and if EVERY topic is stale it keeps each one's
+        last real window rather than emptying the buffer.
+        """
+        with self._lock:
+            reference = now_ns
+            if reference is None:
+                newest = [buf.items[-1].timestamp_ns
+                          for buf in self._topics.values() if buf.items]
+                if not newest:
+                    return
+                reference = max(newest)
+            for buf in self._topics.values():
+                cutoff = reference - buf.window_ns
+                while buf.items and buf.items[0].timestamp_ns < cutoff:
+                    dropped = buf.items.popleft()
+                    buf.total_bytes -= len(dropped.payload)
+
     def snapshot(self) -> list[BufferedMessage]:
         """All buffered messages across all topics, sorted by timestamp."""
         with self._lock:

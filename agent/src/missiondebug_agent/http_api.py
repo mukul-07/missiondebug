@@ -127,6 +127,13 @@ def save_now(
     and posts the public S3 URL to the hub instead of the agent's local
     URL. Upload failure is non-fatal — falls back to agent-served URL.
     """
+    # Trim each topic to its window relative to the freshest captured message
+    # before snapshotting: a topic that went silent still holds its last window
+    # (append-time eviction only fires on new messages), which would make the
+    # saved file span the gap to the freshest topic (a "90s buffer" reading as
+    # hours). After this the capture is one contiguous window, not a stale ring
+    # next to a live one.
+    ring.evict_stale()
     snap = ring.snapshot()
     if not snap:
         raise HTTPException(status_code=409, detail=_empty_buffer_detail(config))

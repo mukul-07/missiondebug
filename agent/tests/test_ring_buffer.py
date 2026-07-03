@@ -150,3 +150,80 @@ def test_invalid_topic_window():
     rb = RingBuffer(window_seconds=10.0)
     with pytest.raises(ValueError):
         rb.configure_topic("/x", window_seconds=0)
+
+
+def test_evict_stale_drops_silent_topics_at_save():
+    # The bug: a topic that stops publishing keeps its last window forever
+    # (append-time eviction only fires on new messages). At save the buffer
+    # spans the gap between the stale topic and the live one.
+    rb = RingBuffer(window_seconds=90.0)   # 90e9 ns window
+    S = 1_000_000_000
+    # /tf published a burst at t=0..1s, then went silent
+    for i in range(3):
+        rb.append(_msg(i * S, topic="/tf"))
+    # /cmd_vel is live now, ~3 hours later
+    now = 3 * 3600 * S
+    for i in range(3):
+        rb.append(_msg(now - 2 * S + i, topic="/cmd_vel"))
+    # before eviction the snapshot spans ~3 hours (the bug)
+    snap = rb.snapshot()
+    span_before = snap[-1].timestamp_ns - snap[0].timestamp_ns
+    assert span_before > 90 * S
+    # evict_stale as of now: the silent /tf (all older than now-90s) is dropped
+    rb.evict_stale(now)
+    snap = rb.snapshot()
+    assert {m.topic for m in snap} == {"/cmd_vel"}
+    assert snap[-1].timestamp_ns - snap[0].timestamp_ns < 90 * S
+
+
+def test_evict_stale_keeps_recent_messages():
+    rb = RingBuffer(window_seconds=10.0)
+    S = 1_000_000_000
+    now = 100 * S
+    # messages arrive in timestamp order (as real ROS messages do)
+    rb.append(_msg(now - 20 * S, topic="/a"))  # older than the window at save
+    rb.append(_msg(now - 5 * S, topic="/a"))   # within the 10s window
+    rb.evict_stale(now)
+    snap = rb.snapshot()
+    assert len(snap) == 1 and snap[0].timestamp_ns == now - 5 * S
+
+
+def test_evict_stale_honors_per_topic_window():
+    rb = RingBuffer(window_seconds=10.0)
+    rb.configure_topic("/cam", window_seconds=1.0)
+    S = 1_000_000_000
+    now = 100 * S
+    rb.append(_msg(now - 3 * S, topic="/cam"))    # older than cam's 1s window
+    rb.append(_msg(now - 3 * S, topic="/state"))  # within state's 10s window
+    rb.evict_stale(now)
+    assert {m.topic for m in rb.snapshot()} == {"/state"}
+
+
+def test_evict_stale_default_reference_is_newest_message():
+    # No now_ns: trim relative to the freshest captured message. The silent
+    # /tf burst (hours old) is dropped; the live /cmd_vel window is kept.
+    rb = RingBuffer(window_seconds=90.0)
+    S = 1_000_000_000
+    for i in range(3):
+        rb.append(_msg(i * S, topic="/tf"))          # t=0..2s, then silent
+    for i in range(3):
+        rb.append(_msg(3 * 3600 * S + i, topic="/cmd_vel"))  # ~3h later, live
+    rb.evict_stale()   # reference = newest = the /cmd_vel burst
+    assert {m.topic for m in rb.snapshot()} == {"/cmd_vel"}
+
+
+def test_evict_stale_all_stale_keeps_last_window():
+    # If EVERY topic is stale, the data-relative default keeps each topic's
+    # last real window rather than emptying the buffer.
+    rb = RingBuffer(window_seconds=10.0)
+    S = 1_000_000_000
+    for i in range(5):
+        rb.append(_msg(i * S, topic="/a"))   # 0..4s, all "old" in wall time
+    rb.evict_stale()   # newest = 4s; window 10s -> keeps everything
+    assert len(rb.snapshot()) == 5
+
+
+def test_evict_stale_empty_buffer_is_noop():
+    rb = RingBuffer(window_seconds=10.0)
+    rb.evict_stale()   # must not raise
+    assert len(rb.snapshot()) == 0
