@@ -84,7 +84,11 @@ export function SessionList() {
   };
 
   const sessionsBody = (
-    <div className="flex-1 grid gap-2">
+    // min-w-0 + minmax(0,1fr): a long nowrap summary's min-content width
+    // otherwise propagates through the grid item and this flex item,
+    // inflating the whole page into horizontal scroll (seen with real
+    // 32-topic agent summaries). Both levels must be capped.
+    <div className="flex-1 min-w-0 grid grid-cols-[minmax(0,1fr)] gap-2">
       {sessions.length === 0 ? (
         <EmptyState
           icon="📼"
@@ -103,7 +107,7 @@ export function SessionList() {
         />
       ) : (
         sessions.map((s: SessionSummary) => (
-          <Link key={s.id} to={`/sessions/${encodeURIComponent(s.id)}`}>
+          <Link key={s.id} to={`/sessions/${encodeURIComponent(s.id)}`} className="min-w-0">
             <Card className="hover:border-accent cursor-pointer">
               <div className="flex items-center justify-between">
                 <div className="min-w-0 flex-1">
