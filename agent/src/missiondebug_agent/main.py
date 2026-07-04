@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import sys
 import threading
 from pathlib import Path
 
@@ -61,6 +62,14 @@ def _path_to_waypoints(msg) -> list[tuple[float, float]]:
 
 def main() -> None:
     _setup_logging()
+
+    # Subcommand: `missiondebug-agent init` — the interactive setup wizard.
+    # Peeked before argparse so the run path keeps its exact CLI shape.
+    if len(sys.argv) > 1 and sys.argv[1] == "init":
+        from .init_wizard import main as init_main
+
+        raise SystemExit(init_main(sys.argv[2:]))
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="config.example.yaml")
     args = parser.parse_args()
