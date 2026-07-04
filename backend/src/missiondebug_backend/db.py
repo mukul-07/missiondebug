@@ -119,6 +119,7 @@ _V2_COLUMN_ADDS = [
     ("sessions", "subsystem", "TEXT"),
     ("sessions", "summary", "TEXT"),
     ("sessions", "cold_at", "INTEGER"),
+    ("agents", "topics_health_json", "TEXT"),
 ]
 
 
@@ -188,9 +189,14 @@ class AgentRow:
     agent_version: str | None
     agent_url: str | None
     subsystem: str | None
+    # Configured-topic health from the agent's last heartbeat (agent >= this
+    # build): {"ok": n, "missing": [...], "silent": [...], "unresolvable": [...]}.
+    # None = the agent doesn't report it (older agent) or no heartbeat yet.
+    topics_health: dict | None = None
 
     @classmethod
     def from_row(cls, r: sqlite3.Row) -> AgentRow:
+        raw = r["topics_health_json"]
         return cls(
             robot_id=r["robot_id"],
             first_seen=r["first_seen"],
@@ -198,6 +204,7 @@ class AgentRow:
             agent_version=r["agent_version"],
             agent_url=r["agent_url"],
             subsystem=r["subsystem"],
+            topics_health=json.loads(raw) if raw else None,
         )
 
 
@@ -551,10 +558,14 @@ class Db:
         buffer_size: int | None = None,
         agent_url: str | None = None,
         agent_version: str | None = None,
+        topics_health: dict | None = None,
     ) -> None:
         """Update agents.last_heartbeat and append a row to agent_heartbeats.
         Auto-creates the agent row if first heartbeat. agent_url + agent_version
         are updated only when provided (so heartbeats stay cheap).
+        topics_health is written every heartbeat, including None — an agent
+        that stops reporting it (downgrade, ROS gone) must not leave a stale
+        verdict pinned to the row.
         """
         # Ensure agent row exists (no-op if already there).
         self.upsert_agent(
@@ -565,8 +576,9 @@ class Db:
         ts = now_ms()
         with self.connect() as conn:
             conn.execute(
-                "UPDATE agents SET last_heartbeat = ? WHERE robot_id = ?",
-                (ts, robot_id),
+                "UPDATE agents SET last_heartbeat = ?, topics_health_json = ? "
+                "WHERE robot_id = ?",
+                (ts, json.dumps(topics_health) if topics_health else None, robot_id),
             )
             conn.execute(
                 """

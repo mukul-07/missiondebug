@@ -71,6 +71,10 @@ class HeartbeatPayload(BaseModel):
     buffer_size: int | None = Field(default=None, ge=0)
     agent_url: str | None = Field(default=None)
     agent_version: str | None = Field(default=None, max_length=40)
+    # Configured-topic health summary (agent >= 0.8): {"ok": n, "missing":
+    # [...], "silent": [...], "unresolvable": [...]}. Optional and bounded
+    # agent-side; stored verbatim, surfaced on the roster + health endpoints.
+    topics_health: dict | None = Field(default=None)
 
 
 class AgentInfo(BaseModel):
@@ -80,6 +84,7 @@ class AgentInfo(BaseModel):
     agent_version: str | None
     agent_url: str | None
     subsystem: str | None
+    topics_health: dict | None = None
 
     @classmethod
     def from_row(cls, a: AgentRow) -> "AgentInfo":
@@ -90,6 +95,7 @@ class AgentInfo(BaseModel):
             agent_version=a.agent_version,
             agent_url=a.agent_url,
             subsystem=a.subsystem,
+            topics_health=a.topics_health,
         )
 
 
@@ -110,6 +116,7 @@ def get_router(get_db) -> APIRouter:
             buffer_size=payload.buffer_size,
             agent_url=payload.agent_url,
             agent_version=payload.agent_version,
+            topics_health=payload.topics_health,
         )
         return Response(status_code=204)
 
@@ -157,6 +164,7 @@ def get_router(get_db) -> APIRouter:
                 "agent_version": a.agent_version,
                 "agent_url": a.agent_url,
                 "subsystem": a.subsystem,
+                "topics_health": a.topics_health,
             })
         # Sort: silent first, then stale, then healthy. Within each, most
         # silent on top so the operator's eye lands on the worst case.

@@ -95,6 +95,15 @@ def main() -> None:
         # only an explicit hub.agent_url applies (the hub-fetch path is separate).
         agent_url = config.hub.agent_url or (
             "" if config.http_uds else f"http://{config.http_host}:{config.http_port}")
+        # Configured-topic health rides each heartbeat (lazy import inside the
+        # provider keeps rclpy out of the hub_client dependency graph).
+        _health_topics = [(t.name, t.type) for t in config.topics]
+
+        def _topics_health() -> dict | None:
+            from .topic_health import compute_topics_health
+
+            return compute_topics_health(_health_topics)
+
         hub_client = HubClient(HubClientConfig(
             hub_url=config.hub.url,
             robot_id=config.robot_id,
@@ -103,6 +112,7 @@ def main() -> None:
             agent_version=AGENT_VERSION,
             subsystem=config.hub.subsystem,
             heartbeat_interval_seconds=config.hub.heartbeat_interval_seconds,
+            topics_health_provider=_topics_health,
         ))
         hub_client.start()
         log.info("Hub sync enabled (url=%s, robot=%s)", config.hub.url, config.robot_id)

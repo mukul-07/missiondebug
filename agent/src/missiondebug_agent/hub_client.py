@@ -57,6 +57,10 @@ class HubClientConfig:
     agent_version: str | None = None
     subsystem: str | None = None
     heartbeat_interval_seconds: float = 60.0
+    # Optional callable returning the configured-topic health summary to ride
+    # each heartbeat (see topic_health.compute_topics_health). None / raising
+    # provider -> the heartbeat simply omits the field; never blocks the ping.
+    topics_health_provider: Any = None
 
 
 class HubClient:
@@ -164,6 +168,13 @@ class HubClient:
                 payload["agent_url"] = self._cfg.agent_url
             if self._cfg.agent_version:
                 payload["agent_version"] = self._cfg.agent_version
+            if self._cfg.topics_health_provider is not None:
+                try:
+                    health = self._cfg.topics_health_provider()
+                    if health is not None:
+                        payload["topics_health"] = health
+                except Exception as e:  # never let health break the ping
+                    log.debug("topics-health provider failed: %s", e)
             try:
                 self._post(url, payload, auth_token=self._cfg.auth_token, timeout=_POST_TIMEOUT_S)
                 self.heartbeats_sent += 1

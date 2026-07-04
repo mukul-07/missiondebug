@@ -55,6 +55,34 @@ function fmtLastSeen(ms: number | null): string {
   return new Date(ms).toLocaleString();
 }
 
+/** Badge when the agent's own heartbeat says configured topics are broken:
+ * red for won't-capture (unresolvable/missing), amber for silent ghosts. */
+function TopicsHealthBadge({ a }: { a: AgentHealthRow }) {
+  const th = a.topics_health;
+  if (!th) return null;
+  const broken = th.unresolvable.length + th.missing.length;
+  const quiet = th.silent.length;
+  if (broken + quiet === 0) return null;
+  const detail = [
+    th.unresolvable.length ? `type not built: ${th.unresolvable.join(", ")}` : "",
+    th.missing.length ? `missing from graph: ${th.missing.join(", ")}` : "",
+    th.silent.length ? `no publishers: ${th.silent.join(", ")}` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const cls = broken > 0
+    ? "bg-red-500/20 text-red-400 border-red-500/40"
+    : "bg-yellow-500/20 text-yellow-400 border-yellow-500/40";
+  return (
+    <span
+      className={`text-[10px] px-1.5 py-0.5 rounded border font-mono whitespace-nowrap shrink-0 ${cls}`}
+      title={`Capture config vs live graph — ${detail}`}
+    >
+      ⚠ {broken + quiet} topic{broken + quiet === 1 ? "" : "s"}
+    </span>
+  );
+}
+
 export function AgentHealth() {
   const [healthyExpanded, setHealthyExpanded] = useState(false);
   // Which robots have their topics panel open. Lives here (not in the row)
@@ -304,14 +332,17 @@ function Row({
         onClick={onToggle}
         title={open ? undefined : "Show live ROS topics on this robot"}
       >
-        <Link
-          to={`/?robot=${encodeURIComponent(a.robot_id)}`}
-          className={`${COL.robot} font-mono text-sm hover:text-accent truncate`}
-          title={`See sessions for ${a.robot_id}`}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {a.robot_id}
-        </Link>
+        <div className={`${COL.robot} flex items-baseline gap-1.5 min-w-0`}>
+          <Link
+            to={`/?robot=${encodeURIComponent(a.robot_id)}`}
+            className="font-mono text-sm hover:text-accent truncate"
+            title={`See sessions for ${a.robot_id}`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {a.robot_id}
+          </Link>
+          <TopicsHealthBadge a={a} />
+        </div>
         <div className={`${COL.silence} text-xs font-mono ${SILENCE_COLOR[status]}`}>
           {fmtSilence(a.silence_seconds)}
         </div>

@@ -169,3 +169,54 @@ def test_stop_without_start_is_safe():
     _r, post_fn = fake_post_factory()
     client = HubClient(_cfg(), post_fn=post_fn)
     client.stop()  # should not raise
+
+
+def test_heartbeat_carries_topics_health_when_provider_set():
+    recorder, post_fn = fake_post_factory()
+    health = {"ok": 2, "missing": [], "silent": ["/odom"], "unresolvable": []}
+    client = HubClient(
+        _cfg(heartbeat_interval_seconds=0.03, topics_health_provider=lambda: health),
+        post_fn=post_fn,
+    )
+    client.start()
+    try:
+        time.sleep(0.1)
+    finally:
+        client.stop()
+    hb_calls = [r for r in recorder if r[0].endswith("/api/v1/agents/heartbeat")]
+    assert hb_calls
+    assert hb_calls[0][1]["topics_health"] == health
+
+
+def test_heartbeat_survives_broken_or_none_provider():
+    recorder, post_fn = fake_post_factory()
+
+    def broken():
+        raise RuntimeError("discovery down")
+
+    client = HubClient(
+        _cfg(heartbeat_interval_seconds=0.03, topics_health_provider=broken),
+        post_fn=post_fn,
+    )
+    client.start()
+    try:
+        time.sleep(0.1)
+    finally:
+        client.stop()
+    hb_calls = [r for r in recorder if r[0].endswith("/api/v1/agents/heartbeat")]
+    assert hb_calls  # the ping still went out
+    assert "topics_health" not in hb_calls[0][1]
+
+    # None from the provider likewise omits the field.
+    recorder2, post_fn2 = fake_post_factory()
+    client2 = HubClient(
+        _cfg(heartbeat_interval_seconds=0.03, topics_health_provider=lambda: None),
+        post_fn=post_fn2,
+    )
+    client2.start()
+    try:
+        time.sleep(0.1)
+    finally:
+        client2.stop()
+    hb2 = [r for r in recorder2 if r[0].endswith("/api/v1/agents/heartbeat")]
+    assert hb2 and "topics_health" not in hb2[0][1]

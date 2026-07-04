@@ -33,6 +33,18 @@ export async function listAgents(): Promise<AgentInfo[]> {
  */
 export type AgentStatus = "healthy" | "stale" | "silent";
 
+/**
+ * Configured-topic health from the agent's last heartbeat (agent >= 0.8):
+ * is everything the robot is configured to capture actually capturable?
+ * null/undefined = the agent doesn't report it.
+ */
+export interface TopicsHealth {
+  ok: number;
+  missing: string[];       // type resolves but topic absent from the graph
+  silent: string[];        // on the graph, zero publishers
+  unresolvable: string[];  // message package not built on the robot
+}
+
 export interface AgentHealthRow {
   robot_id: string;
   status: AgentStatus;
@@ -42,6 +54,7 @@ export interface AgentHealthRow {
   agent_version: string | null;
   agent_url: string | null;
   subsystem: string | null;
+  topics_health?: TopicsHealth | null;
 }
 
 export interface FleetHealth {
