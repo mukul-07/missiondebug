@@ -158,6 +158,12 @@ export function FilterRail({
 
   return (
     <aside className="w-56 shrink-0 border-r border-border pr-3 grid gap-1 text-sm content-start">
+      <div
+        className="text-[10px] uppercase tracking-wide text-muted px-2 pt-1"
+        title="Click a subsystem or a robot to filter the session list"
+      >
+        Filter · subsystem / robot
+      </div>
       <button
         type="button"
         onClick={() => {
