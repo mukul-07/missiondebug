@@ -18,10 +18,17 @@ from __future__ import annotations
 
 import os
 
-from fastapi import APIRouter, Depends, Response
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from ..db import AgentRow, Db, now_ms
+
+# Timeout for proxying GET /topics to an agent. The agent's discovery scan is
+# bounded at ~3s, but a cold scan additionally pays rclpy node creation plus
+# per-topic type-resolution imports, so the read budget is generous. Anything
+# <= 3s would time out on every cold scan.
+_TOPICS_TIMEOUT = httpx.Timeout(connect=5.0, read=20.0, write=5.0, pool=5.0)
 
 
 def _read_timeout(name: str, default_sec: int) -> int:
@@ -165,6 +172,71 @@ def get_router(get_db) -> APIRouter:
                 "healthy_seconds": HEALTHY_TIMEOUT_SEC,
                 "stale_seconds": STALE_TIMEOUT_SEC,
             },
+        }
+
+    @router.get(
+        "/{robot_id}/topics",
+        summary="Discover ROS topics on one robot (proxied from its agent)",
+    )
+    async def agent_topics(robot_id: str, db: Db = Depends(get_db)) -> dict:
+        """Proxy the agent's GET /topics (agent >= 0.7.0) through the hub so
+        the web UI can render live topic discovery: per-topic category,
+        recommended flag, resolvable (message package built?), publisher
+        count, and large-type hint. Read-only — the hub never writes config
+        back to the robot (Hard Rule 22).
+
+        The response is enriched with `last_capture_topics`: the topic list
+        of this robot's most recent session in the hub DB, so the UI can
+        show "visible on the graph vs present in the last capture". The
+        agent has no endpoint exposing its configured capture list, and the
+        last capture is the honest hub-local approximation.
+
+        Error mapping:
+          404 — robot unknown to the hub (never heartbeated / ingested)
+          409 — agent reported no reachable agent_url (e.g. UDS-only)
+          426 — agent predates GET /topics (needs agent >= 0.7.0)
+          502 — agent unreachable, upstream error, or invalid payload
+        """
+        a = db.get_agent(robot_id)
+        if a is None:
+            raise HTTPException(404, f"unknown robot {robot_id!r}")
+        if not a.agent_url:
+            raise HTTPException(
+                409,
+                f"agent for {robot_id!r} has not reported a reachable URL "
+                "(agent_url); topic discovery needs a direct HTTP route to "
+                "the robot",
+            )
+        upstream = a.agent_url.rstrip("/") + "/topics"
+        try:
+            async with httpx.AsyncClient(timeout=_TOPICS_TIMEOUT) as client:
+                resp = await client.get(upstream)
+        except httpx.HTTPError as e:
+            raise HTTPException(502, f"agent unreachable: {e}") from e
+        if resp.status_code == 404:
+            # Pre-0.7.0 agents have no /topics route at all.
+            raise HTTPException(
+                426,
+                "topic discovery requires agent >= 0.7.0 "
+                f"(robot {robot_id!r} reports "
+                f"{a.agent_version or 'unknown version'})",
+            )
+        if resp.status_code >= 400:
+            raise HTTPException(502, f"agent returned HTTP {resp.status_code}")
+        try:
+            data = resp.json()
+        except ValueError as e:
+            raise HTTPException(502, "agent returned invalid JSON") from e
+        topics = data.get("topics")
+        if not isinstance(topics, list):
+            raise HTTPException(502, "agent returned an unexpected payload")
+        last = db.list_sessions(robot_id=robot_id, limit=1)
+        return {
+            "robot_id": robot_id,
+            "agent_version": a.agent_version,
+            "settled": bool(data.get("settled", False)),
+            "topics": topics,
+            "last_capture_topics": last[0].topics if last else None,
         }
 
     return router

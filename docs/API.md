@@ -161,6 +161,41 @@ curl -X POST http://<robot>:8000/api/sessions/sample_drive/annotations \
 curl http://<robot>:8000/api/sessions/sample_drive/annotations
 ```
 
+### Agents (fleet)
+
+| Method | Path | Summary |
+|---|---|---|
+| POST | `/api/v1/agents/heartbeat` | Agent liveness ping (sent every 60s) |
+| GET  | `/api/v1/agents` | Raw roster of known agents |
+| GET  | `/api/v1/agents/health` | Fleet operational health (healthy/stale/silent) |
+| GET  | `/api/v1/agents/{robot_id}/topics` | Live ROS topic discovery on one robot, proxied from its agent |
+
+The topics route forwards to the agent's `GET /topics` (agent ≥ 0.7.0) and
+enriches the result with the topic list of that robot's most recent capture,
+so a UI can show "visible on the ROS graph vs present in the last capture".
+The hub is strictly read-only toward robots — it never writes config back.
+
+```bash
+curl http://<hub>:8000/api/v1/agents/robot-001/topics
+# {
+#   "robot_id": "robot-001",
+#   "agent_version": "0.7.4",
+#   "settled": true,                     # false = partial DDS scan, retry shortly
+#   "topics": [
+#     {"name": "/cmd_vel", "type": "geometry_msgs/msg/Twist",
+#      "resolvable": true, "category": "control", "recommended": true,
+#      "reason": "control command (what the robot was told to do)",
+#      "large": false, "publishers": 1},
+#     ...
+#   ],
+#   "last_capture_topics": ["/cmd_vel", "/tf", ...]   # null if no sessions yet
+# }
+```
+
+Errors: `404` unknown robot · `409` agent reported no reachable URL (e.g.
+Unix-socket-only) · `426` agent predates `GET /topics` (needs ≥ 0.7.0) ·
+`502` agent unreachable or returned a bad payload.
+
 ### Admin
 
 | Method | Path | Summary |
