@@ -322,8 +322,12 @@ def build_app(
         summary="Liveness probe",
     )
     def healthz():
-        """Returns `{"ok": true}` when the backend is up. Use as your container/systemd healthcheck."""
-        return {"ok": True}
+        """Returns `{"ok": true}` when the backend is up. Use as your
+        container/systemd healthcheck. `demo_tour` is set by the demo image
+        (MD_DEMO_TOUR=1) so the UI can show its guided-tour strip; real
+        deployments never set it."""
+        demo_tour = os.environ.get("MD_DEMO_TOUR", "").strip().lower() in ("1", "true", "yes")
+        return {"ok": True, "demo_tour": demo_tour}
 
     @app.post("/api/admin/rescan", tags=["admin"], summary="Rescan sessions directory for new MCAPs")
     def rescan():

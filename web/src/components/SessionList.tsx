@@ -5,7 +5,9 @@ import { listSessions, type SessionSummary } from "../api/sessions";
 import { Card } from "./ui/Card";
 import { EmptyState } from "./ui/EmptyState";
 import { SkeletonSessionList } from "./ui/Skeleton";
+import { DemoTourBanner } from "./DemoTourBanner";
 import { FilterRail, useRailGroups } from "./FilterRail";
+import { FirstRunChecklist } from "./FirstRunChecklist";
 import { TopicListExpander } from "./TopicListExpander";
 
 function relativeTime(ms: number): string {
@@ -169,6 +171,19 @@ export function SessionList() {
       <div className="flex items-baseline gap-2 mb-3">
         <h2 className="text-lg">Sessions</h2>
         {summary ? <span className="text-xs text-muted">{summary}</span> : null}
+      </div>
+
+      <div className="grid gap-3 mb-3 max-w-5xl empty:hidden">
+        <DemoTourBanner firstSessionId={sessions[0]?.id ?? null} />
+        {/* Only judge "is this hub empty?" on the unfiltered view — a robot
+            filter with zero matches on a mature hub is not a first run. */}
+        {!robotFilter && !subsystemFilter ? (
+          <FirstRunChecklist
+            agentCount={agents.length}
+            sessionCount={sessions.length}
+            firstRobotId={agents[0]?.robot_id ?? null}
+          />
+        ) : null}
       </div>
 
       {showRail ? (
