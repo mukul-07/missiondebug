@@ -66,3 +66,55 @@ export async function getFleetHealth(): Promise<FleetHealth> {
   }
   return r.json();
 }
+
+/**
+ * v2 — live ROS topic discovery on one robot, proxied through the hub
+ * (GET /api/v1/agents/{robot_id}/topics; needs agent >= 0.7.0 on the robot).
+ */
+export interface AgentTopic {
+  name: string;
+  type: string;
+  resolvable: boolean;   // false = message package not built on the robot
+  category: string;      // control | state | safety | perception | transform | plan | debug | other
+  recommended: boolean;  // whether the capture checkbox should start checked
+  reason: string | null; // plain-language why, null for "other"
+  large: boolean;        // high-rate/large type (Image, PointCloud2, ...)
+  publishers: number | null; // 0 = advertised but silent; null = unknown
+}
+
+export interface AgentTopics {
+  robot_id: string;
+  agent_version: string | null;
+  settled: boolean;      // false = partial DDS scan, list may be incomplete
+  topics: AgentTopic[];
+  last_capture_topics: string[] | null; // topics in this robot's most recent session
+}
+
+/**
+ * Error carrying the HTTP status so the panel can render state-specific
+ * guidance (409 no reachable URL, 426 agent too old, 502 unreachable).
+ */
+export class AgentTopicsError extends Error {
+  status: number;
+  detail: string;
+
+  constructor(status: number, detail: string) {
+    super(`getAgentTopics: ${status}${detail ? ` ${detail}` : ""}`);
+    this.status = status;
+    this.detail = detail;
+  }
+}
+
+export async function getAgentTopics(robotId: string): Promise<AgentTopics> {
+  const r = await fetch(`/api/v1/agents/${encodeURIComponent(robotId)}/topics`);
+  if (!r.ok) {
+    let detail = "";
+    try {
+      detail = (await r.json()).detail ?? "";
+    } catch {
+      // non-JSON error body — keep the status only
+    }
+    throw new AgentTopicsError(r.status, detail);
+  }
+  return r.json();
+}

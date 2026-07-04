@@ -3,6 +3,7 @@ import { useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { listAnnotations } from "../api/annotations";
 import { getSession, mcapUrl } from "../api/sessions";
+import { copyText } from "../lib/clipboard";
 import { useMcapLoader } from "../hooks/useMcapLoader";
 import { usePlayback } from "../stores/playback";
 import { AnnotationsPanel } from "./AnnotationsPanel";
@@ -77,56 +78,14 @@ export function SessionDetail() {
     return () => window.clearTimeout(handle);
   }, [currentTimeNs, durationNs]);
 
-  // Copy link state. navigator.clipboard.writeText only works in
-  // secure contexts (HTTPS / localhost). Real fleet deployments often
-  // serve the hub UI over plain HTTP on an internal IP, where the
-  // modern API is blocked by the browser. Fall back to the legacy
-  // execCommand trick; last resort, prompt the user.
+  // Copy link — three-tier fallback lives in lib/clipboard (plain-HTTP
+  // fleet hubs can't use navigator.clipboard; see copyText).
   const [copied, setCopied] = useState(false);
   const onCopyLink = async () => {
-    const url = window.location.href;
-    const flashCopied = () => {
+    if (await copyText(window.location.href, "Copy this link:")) {
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1500);
-    };
-
-    // Modern path — only works on HTTPS or http://localhost.
-    if (navigator.clipboard && window.isSecureContext) {
-      try {
-        await navigator.clipboard.writeText(url);
-        flashCopied();
-        return;
-      } catch (e) {
-        console.warn("clipboard.writeText failed, falling back", e);
-      }
     }
-
-    // Legacy fallback. Deprecated but still supported across browsers
-    // and (crucially) works on plain-HTTP origins.
-    try {
-      const ta = document.createElement("textarea");
-      ta.value = url;
-      ta.style.position = "fixed";
-      ta.style.top = "0";
-      ta.style.left = "0";
-      ta.style.opacity = "0";
-      ta.style.pointerEvents = "none";
-      ta.setAttribute("readonly", "");
-      document.body.appendChild(ta);
-      ta.select();
-      ta.setSelectionRange(0, ta.value.length);
-      const ok = document.execCommand("copy");
-      document.body.removeChild(ta);
-      if (ok) {
-        flashCopied();
-        return;
-      }
-    } catch (e) {
-      console.warn("execCommand copy fallback failed", e);
-    }
-
-    // Last resort — show the URL in a prompt so the user can copy by hand.
-    window.prompt("Copy this link:", url);
   };
 
   // Playback rAF loop.

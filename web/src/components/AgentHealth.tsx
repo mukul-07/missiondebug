@@ -6,6 +6,7 @@ import {
   type AgentStatus,
   getFleetHealth,
 } from "../api/agents";
+import { AgentTopicsPanel } from "./AgentTopicsPanel";
 import { EmptyState } from "./ui/EmptyState";
 import { LicenseBadge } from "./LicenseBadge";
 import { Skeleton } from "./ui/Skeleton";
@@ -18,7 +19,9 @@ import { Skeleton } from "./ui/Skeleton";
  *
  * Three sections, in fixed order — Silent (most urgent), Stale, then
  * Healthy (collapsible because it's typically the bulk). Each row
- * shows robot_id, silence duration, agent_version, subsystem.
+ * shows robot_id, silence duration, agent_version, subsystem, and
+ * expands to live ROS topic discovery on that robot (AgentTopicsPanel,
+ * agent >= 0.7.0).
  *
  * Refetches every 10s so the page reflects current state without a
  * page reload.
@@ -192,30 +195,61 @@ function Rows({
   return (
     <ul className="divide-y divide-border">
       {rows.map((a) => (
-        <li key={a.robot_id} className="px-3 py-2 grid grid-cols-12 gap-3 items-baseline">
-          <Link
-            to={`/?robot=${encodeURIComponent(a.robot_id)}`}
-            className="col-span-3 font-mono text-sm hover:text-accent truncate"
-            title={`See sessions for ${a.robot_id}`}
-          >
-            {a.robot_id}
-          </Link>
-          <div className={`col-span-2 text-xs font-mono ${SILENCE_COLOR[status]}`}>
-            {fmtSilence(a.silence_seconds)}
-          </div>
-          <div className="col-span-3 text-xs text-muted truncate" title={fmtLastSeen(a.last_heartbeat)}>
-            {a.last_heartbeat === null
-              ? "never heartbeated"
-              : `last ${fmtLastSeen(a.last_heartbeat)}`}
-          </div>
-          <div className="col-span-2 text-xs font-mono text-muted truncate">
-            {a.subsystem ?? "—"}
-          </div>
-          <div className="col-span-2 text-xs font-mono text-muted truncate" title={a.agent_version ?? ""}>
-            {a.agent_version ?? "—"}
-          </div>
-        </li>
+        <Row key={a.robot_id} a={a} status={status} />
       ))}
     </ul>
+  );
+}
+
+function Row({ a, status }: { a: AgentHealthRow; status: AgentStatus }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <li className="px-3 py-2">
+      <div
+        className="grid grid-cols-12 gap-3 items-baseline cursor-pointer"
+        onClick={() => setOpen((o) => !o)}
+        title={open ? undefined : "Show live ROS topics on this robot"}
+      >
+        <Link
+          to={`/?robot=${encodeURIComponent(a.robot_id)}`}
+          className="col-span-3 font-mono text-sm hover:text-accent truncate"
+          title={`See sessions for ${a.robot_id}`}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {a.robot_id}
+        </Link>
+        <div className={`col-span-2 text-xs font-mono ${SILENCE_COLOR[status]}`}>
+          {fmtSilence(a.silence_seconds)}
+        </div>
+        <div className="col-span-2 text-xs text-muted truncate" title={fmtLastSeen(a.last_heartbeat)}>
+          {a.last_heartbeat === null
+            ? "never heartbeated"
+            : `last ${fmtLastSeen(a.last_heartbeat)}`}
+        </div>
+        <div className="col-span-2 text-xs font-mono text-muted truncate">
+          {a.subsystem ?? "—"}
+        </div>
+        <div className="col-span-2 text-xs font-mono text-muted truncate" title={a.agent_version ?? ""}>
+          {a.agent_version ?? "—"}
+        </div>
+        <button
+          type="button"
+          className="col-span-1 text-[10px] text-muted hover:text-text text-right whitespace-nowrap"
+          onClick={(e) => {
+            e.stopPropagation();
+            setOpen((o) => !o);
+          }}
+          aria-expanded={open}
+          aria-label={`${open ? "Hide" : "Show"} topics on ${a.robot_id}`}
+        >
+          {open ? "▾" : "▸"} topics
+        </button>
+      </div>
+      {open ? (
+        <div className="border-t border-border mt-2 pt-2">
+          <AgentTopicsPanel robotId={a.robot_id} agentVersion={a.agent_version} />
+        </div>
+      ) : null}
+    </li>
   );
 }
