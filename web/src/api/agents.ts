@@ -55,15 +55,19 @@ export interface FleetHealth {
 
 export async function getFleetHealth(): Promise<FleetHealth> {
   const r = await fetch("/api/v1/agents/health");
-  if (!r.ok) {
-    // Pre-v2 backend or empty hub — return a synthetic empty shape so
-    // the page can render its zero-state.
+  if (r.status === 404) {
+    // Pre-v2 backend (endpoint doesn't exist) — return a synthetic empty
+    // shape so the page can render its zero-state. ONLY for 404: any other
+    // failure (500, auth 401, network) must throw, or a transient hub error
+    // masquerades as "no agents have reported yet" on the exact page whose
+    // job is to answer "is MissionDebug running on my robots?".
     return {
       healthy: 0, stale: 0, silent: 0, total: 0,
       agents: [],
       thresholds: { healthy_seconds: 120, stale_seconds: 300 },
     };
   }
+  if (!r.ok) throw new Error(`getFleetHealth: ${r.status}`);
   return r.json();
 }
 
@@ -88,6 +92,7 @@ export interface AgentTopics {
   settled: boolean;      // false = partial DDS scan, list may be incomplete
   topics: AgentTopic[];
   last_capture_topics: string[] | null; // topics in this robot's most recent session
+  last_capture_session_id?: string | null; // that session's id (hub >= this build)
 }
 
 /**

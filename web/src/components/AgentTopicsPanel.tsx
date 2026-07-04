@@ -21,6 +21,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import {
   type AgentTopic,
   type AgentTopics,
@@ -30,6 +31,12 @@ import {
 import { copyText } from "../lib/clipboard";
 import { Button } from "./ui/Button";
 import { Skeleton } from "./ui/Skeleton";
+
+// Checkbox selections per robot, module-scoped so an open panel that
+// remounts (e.g. its row moves between health sections when the robot's
+// status flips) keeps the operator's edits. Session-lifetime only — a
+// page reload re-derives the pre-checks from the scan's recommendations.
+const checkedByRobot = new Map<string, Set<string>>();
 
 const CATEGORY_ORDER = [
   "control",
@@ -66,7 +73,11 @@ function supportsDiscovery(version: string | null): boolean | null {
 }
 
 function configYaml(topics: AgentTopic[], checked: Set<string>): string {
-  const lines = ["topics:"];
+  const lines = [
+    "# MissionDebug capture topics — replace the topics: block in",
+    "# /etc/missiondebug/config.yaml on the robot, then restart the agent.",
+    "topics:",
+  ];
   for (const t of topics) {
     if (checked.has(t.name)) {
       lines.push(`  - { name: "${t.name}", type: "${t.type}" }`);
@@ -121,24 +132,35 @@ export function AgentTopicsPanel({
   // capture nothing). Initialized once from the first SETTLED scan — a
   // partial scan would pre-check only the topics it happened to see, and
   // the ones arriving at settle would stay unchecked. Rescans after init
-  // keep the user's edits.
-  const [checked, setChecked] = useState<Set<string> | null>(null);
+  // keep the user's edits (persisted per-robot across row remounts).
+  const [checked, setChecked] = useState<Set<string> | null>(
+    () => checkedByRobot.get(robotId) ?? null,
+  );
   useEffect(() => {
     if (view?.settled && checked === null) {
-      setChecked(
-        new Set(
-          view.topics
-            .filter((t) => t.recommended && t.resolvable)
-            .map((t) => t.name),
-        ),
+      const initial = new Set(
+        view.topics
+          .filter((t) => t.recommended && t.resolvable)
+          .map((t) => t.name),
       );
+      checkedByRobot.set(robotId, initial);
+      setChecked(initial);
     }
-  }, [view, checked]);
+  }, [view, checked, robotId]);
+
+  // Substring filter over topic names — 30-70 topics in a 320px scroll
+  // region is scroll-hunting without one.
+  const [filter, setFilter] = useState("");
+  const visibleTopics = useMemo(() => {
+    if (!view) return [];
+    const q = filter.trim().toLowerCase();
+    if (!q) return view.topics;
+    return view.topics.filter((t) => t.name.toLowerCase().includes(q));
+  }, [view, filter]);
 
   const groups = useMemo(() => {
-    if (!view) return [];
     const byCat = new Map<string, AgentTopic[]>();
-    for (const t of view.topics) {
+    for (const t of visibleTopics) {
       const cat = CATEGORY_ORDER.includes(t.category) ? t.category : "other";
       const list = byCat.get(cat) ?? [];
       list.push(t);
@@ -148,11 +170,19 @@ export function AgentTopicsPanel({
       category: c,
       topics: byCat.get(c) as AgentTopic[],
     }));
-  }, [view]);
+  }, [visibleTopics]);
+
+  // The selection that actually lands in the YAML: intersection of the
+  // checked set with the CURRENT scan. A rescan can drop topics; the
+  // button count must drop with it or it overstates what gets copied.
+  const effectiveChecked = useMemo(() => {
+    if (!view || !checked) return [];
+    return view.topics.filter((t) => checked.has(t.name));
+  }, [view, checked]);
 
   const [copied, setCopied] = useState(false);
   const onCopyConfig = async () => {
-    if (!view || !checked || checked.size === 0) return;
+    if (!view || !checked || effectiveChecked.length === 0) return;
     if (await copyText(configYaml(view.topics, checked), "Copy this config:")) {
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1500);
@@ -164,6 +194,7 @@ export function AgentTopicsPanel({
       const next = new Set(prev ?? []);
       if (next.has(name)) next.delete(name);
       else next.add(name);
+      checkedByRobot.set(robotId, next);
       return next;
     });
   };
@@ -207,11 +238,19 @@ export function AgentTopicsPanel({
       message =
         "The robot's agent is unreachable from the hub right now — is the " +
         "robot online?";
+    } else if (err instanceof AgentTopicsError) {
+      // Anything unexpected (auth 401, pruned-robot 404, ...) still gets a
+      // human sentence, never a raw exception string.
+      message =
+        `Couldn't load topics from the hub (HTTP ${err.status}). ` +
+        "Retry, or sign in again if the hub requires login.";
     } else {
-      message = String(err);
+      message = "Couldn't load topics — the hub didn't respond.";
     }
-    const retriable =
-      !(err instanceof AgentTopicsError) || err.status === 502;
+    const retriable = !(
+      err instanceof AgentTopicsError &&
+      (err.status === 409 || err.status === 426)
+    );
     return (
       <div className="flex items-baseline gap-3 flex-wrap">
         <span className="text-xs text-muted">{message}</span>
@@ -251,11 +290,30 @@ export function AgentTopicsPanel({
           Topics on this robot
         </span>
         <span className="text-xs text-muted">
-          {view.topics.length} visible · {recommendedCount} recommended
+          {filter.trim()
+            ? `${visibleTopics.length} of ${view.topics.length} match`
+            : `${view.topics.length} visible · ${recommendedCount} recommended`}
         </span>
+        {view.last_capture_session_id ? (
+          <Link
+            to={`/sessions/${encodeURIComponent(view.last_capture_session_id)}`}
+            className="text-xs text-green-400 hover:underline"
+            title="Open this robot's most recent capture"
+          >
+            last capture →
+          </Link>
+        ) : null}
+        <input
+          type="text"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          placeholder="filter topics…"
+          aria-label="Filter topics by name"
+          className="ml-auto w-36 bg-bg border border-border rounded px-2 py-1 text-xs font-mono outline-none focus:border-accent"
+        />
         <Button
           variant="ghost"
-          className="text-xs px-2 py-1 ml-auto"
+          className="text-xs px-2 py-1"
           onClick={() => {
             setAutoRetries(0);
             q.refetch();
@@ -276,6 +334,11 @@ export function AgentTopicsPanel({
       ) : null}
 
       <div className="grid gap-2 max-h-80 overflow-y-auto pr-1">
+        {filter.trim() && visibleTopics.length === 0 ? (
+          <div className="text-xs text-muted py-1">
+            No topics match "{filter.trim()}".
+          </div>
+        ) : null}
         {groups.map((g) => (
           <div key={g.category}>
             <div className="text-[10px] uppercase tracking-wide text-muted mb-1">
@@ -349,12 +412,14 @@ export function AgentTopicsPanel({
           variant="ghost"
           className="text-xs px-2 py-1"
           onClick={onCopyConfig}
-          disabled={!checked || checked.size === 0}
+          disabled={effectiveChecked.length === 0}
         >
-          {copied ? "Copied ✓" : `Copy config YAML (${checked?.size ?? 0})`}
+          {copied ? "Copied ✓" : `Copy config YAML (${effectiveChecked.length})`}
         </Button>
         <span className="text-[10px] text-muted">
-          The hub never writes to robots — paste into the agent's config.yaml.
+          The hub never writes to robots — paste over the topics: block in{" "}
+          <span className="font-mono">/etc/missiondebug/config.yaml</span> on
+          the robot, then restart the agent.
         </span>
       </div>
     </div>

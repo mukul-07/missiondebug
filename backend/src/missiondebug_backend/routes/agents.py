@@ -237,6 +237,7 @@ def get_router(get_db) -> APIRouter:
             "settled": bool(data.get("settled", False)),
             "topics": topics,
             "last_capture_topics": last[0].topics if last else None,
+            "last_capture_session_id": last[0].id if last else None,
         }
 
     return router

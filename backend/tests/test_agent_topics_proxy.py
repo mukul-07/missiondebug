@@ -104,6 +104,7 @@ def test_topics_proxied_through_hub(tmp_path):
         assert j["topics"] == _TOPICS_PAYLOAD["topics"]
         # No sessions for this robot yet -> no last-capture cross-reference.
         assert j["last_capture_topics"] is None
+        assert j["last_capture_session_id"] is None
 
 
 def test_topics_enriched_with_last_capture(tmp_path):
@@ -125,6 +126,7 @@ def test_topics_enriched_with_last_capture(tmp_path):
         assert r.status_code == 200
         j = c.get("/api/v1/agents/r1/topics").json()
         assert j["last_capture_topics"] == ["/cmd_vel", "/tf"]
+        assert j["last_capture_session_id"] == "SES-1"
 
 
 def test_topics_last_capture_is_most_recent_session(tmp_path):
