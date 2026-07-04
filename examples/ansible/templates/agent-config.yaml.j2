@@ -1,0 +1,25 @@
+# MissionDebug agent configuration — managed by Ansible, local edits will
+# be overwritten on the next playbook run.
+
+robot_id: "{{ inventory_hostname }}"
+buffer_seconds: 60
+
+topics:
+{% for t in md_topics %}
+  - { name: "{{ t.name }}", type: "{{ t.type }}"{% if t.reliability is defined %}, reliability: "{{ t.reliability }}"{% endif %} }
+{% endfor %}
+
+output_dir: "/var/lib/missiondebug/sessions"
+
+# Bind beyond loopback so the hub can fetch recordings and scan topics.
+http_host: "0.0.0.0"
+http_port: 7000
+
+{% if md_hub_url is defined and md_hub_url %}
+hub:
+  url: "{{ md_hub_url }}"
+  agent_url: "http://{{ ansible_default_ipv4.address | default(ansible_host) }}:7000"
+{% if md_subsystem %}
+  subsystem: "{{ md_subsystem }}"
+{% endif %}
+{% endif %}

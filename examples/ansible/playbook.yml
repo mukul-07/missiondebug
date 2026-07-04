@@ -1,0 +1,76 @@
+---
+# Install and configure the MissionDebug agent across a fleet.
+#
+#   ansible-playbook -i inventory.ini playbook.yml
+#
+# Each robot gets: the signed apt repository, the missiondebug-agent
+# package, and a templated /etc/missiondebug/config.yaml with a unique
+# robot_id (the inventory hostname) pointing at your hub. Re-runnable:
+# only changes what differs, restarts the agent only when the config
+# changed.
+#
+# Variables (set in inventory / group_vars — see inventory.example.ini):
+#   md_hub_url:      http://<hub>:8000        (required for fleet reporting)
+#   md_subsystem:    free-form tag, optional  (e.g. navigation, power)
+#   md_topics:       list of {name, type} to capture (a sensible AMR
+#                    default is provided below; override per group)
+
+- name: MissionDebug agent on every robot
+  hosts: robots
+  become: true
+
+  vars:
+    md_apt_url: "https://mukul-07.github.io/missiondebug"
+    md_keyring: /etc/apt/keyrings/missiondebug.gpg
+    md_subsystem: ""
+    md_topics:
+      - { name: "/tf", type: "tf2_msgs/msg/TFMessage" }
+      - { name: "/cmd_vel", type: "geometry_msgs/msg/Twist" }
+      - { name: "/odom", type: "nav_msgs/msg/Odometry" }
+
+  tasks:
+    - name: Keyring directory exists
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+
+    - name: MissionDebug apt key (dearmored)
+      ansible.builtin.shell: |
+        set -o pipefail
+        curl -fsSL {{ md_apt_url }}/missiondebug-archive-key.asc | gpg --dearmor -o {{ md_keyring }}
+      args:
+        creates: "{{ md_keyring }}"
+        executable: /bin/bash
+
+    - name: MissionDebug apt repository
+      ansible.builtin.apt_repository:
+        repo: "deb [signed-by={{ md_keyring }}] {{ md_apt_url }} {{ ansible_distribution_release }} main"
+        filename: missiondebug
+        state: present
+
+    - name: Install the agent
+      ansible.builtin.apt:
+        name: missiondebug-agent
+        state: present
+        update_cache: true
+
+    - name: Agent configuration
+      ansible.builtin.template:
+        src: templates/agent-config.yaml.j2
+        dest: /etc/missiondebug/config.yaml
+        mode: "0644"
+        backup: true
+      notify: restart missiondebug-agent
+
+    - name: Agent enabled and running
+      ansible.builtin.systemd:
+        name: missiondebug-agent
+        enabled: true
+        state: started
+
+  handlers:
+    - name: restart missiondebug-agent
+      ansible.builtin.systemd:
+        name: missiondebug-agent
+        state: restarted
