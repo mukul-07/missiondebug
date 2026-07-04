@@ -52,7 +52,8 @@ def test_missing_when_resolvable_but_absent():
 
 
 def test_unsettled_scan_returns_none():
-    scan = lambda: {"settled": False, "topics": [{"name": "/cmd_vel", "publishers": 1}]}
+    def scan():
+        return {"settled": False, "topics": [{"name": "/cmd_vel", "publishers": 1}]}
     assert compute_topics_health(CONFIGURED, scan=scan, resolve=_resolve()) is None
 
 

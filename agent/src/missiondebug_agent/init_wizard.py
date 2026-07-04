@@ -42,12 +42,30 @@ ARCHETYPES: dict[str, dict] = {
             ("/battery", "sensor_msgs/msg/BatteryState"),
         ],
         # stall needs both the command and the motion topic to be captured
-        "stall": {"needs": ["/cmd_vel", "/odom"],
-                  "yaml": "  stall:\n    velocity_threshold: 0.01\n    duration_seconds: 5.0\n    cooldown_seconds: 30.0"},
-        "battery_low": {"topic": "/battery",
-                        "yaml": '  battery_low:\n    topic: "/battery"\n    threshold: 0.2\n    duration_seconds: 5.0\n    cooldown_seconds: 600.0'},
+        "stall": {
+            "needs": ["/cmd_vel", "/odom"],
+            "yaml": (
+                "  stall:\n"
+                "    velocity_threshold: 0.01\n"
+                "    duration_seconds: 5.0\n"
+                "    cooldown_seconds: 30.0"
+            ),
+        },
+        "battery_low": {
+            "topic": "/battery",
+            "yaml": (
+                "  battery_low:\n"
+                '    topic: "/battery"\n'
+                "    threshold: 0.2\n"
+                "    duration_seconds: 5.0\n"
+                "    cooldown_seconds: 600.0"
+            ),
+        },
         "dropout": [
-            {"topic": "/scan", "yaml": '    - { topic: "/scan", silence_seconds: 3.0, cooldown_seconds: 60.0 }'},
+            {
+                "topic": "/scan",
+                "yaml": '    - { topic: "/scan", silence_seconds: 3.0, cooldown_seconds: 60.0 }',
+            },
         ],
         "rules": [],
     },
@@ -59,11 +77,31 @@ ARCHETYPES: dict[str, dict] = {
             ("/mavros/battery", "sensor_msgs/msg/BatteryState"),
         ],
         "stall": None,
-        "battery_low": {"topic": "/mavros/battery",
-                        "yaml": '  battery_low:\n    topic: "/mavros/battery"\n    threshold: 0.25\n    duration_seconds: 2.0\n    cooldown_seconds: 300.0'},
+        "battery_low": {
+            "topic": "/mavros/battery",
+            "yaml": (
+                "  battery_low:\n"
+                '    topic: "/mavros/battery"\n'
+                "    threshold: 0.25\n"
+                "    duration_seconds: 2.0\n"
+                "    cooldown_seconds: 300.0"
+            ),
+        },
         "dropout": [
-            {"topic": "/mavros/state", "yaml": '    - { topic: "/mavros/state", silence_seconds: 2.0, cooldown_seconds: 60.0, name: "mavlink-heartbeat-lost" }'},
-            {"topic": "/mavros/imu/data", "yaml": '    - { topic: "/mavros/imu/data", silence_seconds: 1.0, cooldown_seconds: 60.0 }'},
+            {
+                "topic": "/mavros/state",
+                "yaml": (
+                    '    - { topic: "/mavros/state", silence_seconds: 2.0, '
+                    'cooldown_seconds: 60.0, name: "mavlink-heartbeat-lost" }'
+                ),
+            },
+            {
+                "topic": "/mavros/imu/data",
+                "yaml": (
+                    '    - { topic: "/mavros/imu/data", silence_seconds: 1.0, '
+                    "cooldown_seconds: 60.0 }"
+                ),
+            },
         ],
         "rules": [],
     },
@@ -76,11 +114,26 @@ ARCHETYPES: dict[str, dict] = {
         "stall": None,
         "battery_low": None,
         "dropout": [
-            {"topic": "/joint_states", "yaml": '    - { topic: "/joint_states", silence_seconds: 1.0, cooldown_seconds: 60.0 }'},
+            {
+                "topic": "/joint_states",
+                "yaml": (
+                    '    - { topic: "/joint_states", silence_seconds: 1.0, '
+                    "cooldown_seconds: 60.0 }"
+                ),
+            },
         ],
         "rules": [
-            {"topic": "/wrench",
-             "yaml": "    - name: force-spike\n      topic: /wrench\n      field: wrench.force.z\n      gt: 50\n      duration_seconds: 0.2\n      cooldown_seconds: 10"},
+            {
+                "topic": "/wrench",
+                "yaml": (
+                    "    - name: force-spike\n"
+                    "      topic: /wrench\n"
+                    "      field: wrench.force.z\n"
+                    "      gt: 50\n"
+                    "      duration_seconds: 0.2\n"
+                    "      cooldown_seconds: 10"
+                ),
+            },
         ],
     },
 }
@@ -189,7 +242,9 @@ def render_config(
         if agent_url:
             lines.append(f'  agent_url: "{agent_url}"')
         else:
-            lines.append('  # agent_url: "http://<this-robot-ip>:7000"  # set me: hub->robot callback')
+            lines.append(
+                '  # agent_url: "http://<this-robot-ip>:7000"  # set me: hub->robot callback'
+            )
         if subsystem:
             lines.append(f'  subsystem: "{subsystem}"')
         lines.append("")
@@ -245,9 +300,11 @@ def main(argv: list[str] | None = None, *, input_fn=input, print_fn=print) -> in
                         help="config file to write (default: /etc/missiondebug/config.yaml)")
     parser.add_argument("--hub-url", default=None,
                         help="MissionDebug hub this robot reports to (e.g. http://192.168.1.50:8000)")
-    parser.add_argument("--subsystem", default=None, help="optional free-form tag (e.g. navigation)")
+    parser.add_argument("--subsystem", default=None,
+                        help="optional free-form tag (e.g. navigation)")
     parser.add_argument("--archetype", choices=sorted(ARCHETYPES), default=None,
-                        help="anomaly-rule preset; also the topic fallback when no ROS graph is visible")
+                        help="anomaly-rule preset; also the topic fallback "
+                             "when no ROS graph is visible")
     parser.add_argument("--yes", action="store_true",
                         help="non-interactive: accept every recommendation")
     args = parser.parse_args(argv)
@@ -269,20 +326,25 @@ def main(argv: list[str] | None = None, *, input_fn=input, print_fn=print) -> in
     if not topics:
         print_fn("No ROS topics visible (is ROS running?).")
         if archetype is None and not args.yes:
-            reply = ask(f"Fall back to an archetype preset {sorted(ARCHETYPES)} [ground-vehicle]: ").strip()
+            reply = ask(
+                f"Fall back to an archetype preset {sorted(ARCHETYPES)} [ground-vehicle]: "
+            ).strip()
             archetype = reply or "ground-vehicle"
         archetype = archetype or "ground-vehicle"
         chosen = list(ARCHETYPES[archetype]["topics"])
         print_fn(f"Using the {archetype} starting set ({len(chosen)} topics).")
     else:
         if not settled:
-            print_fn("(scan did not fully settle — the list may be missing topics; rerun to refresh)")
+            print_fn(
+                "(scan did not fully settle — the list may be missing topics; rerun to refresh)"
+            )
         selected = propose_selection(topics)
         while True:
             print_fn(f"\nFound {len(topics)} topics — capture the checked ones:")
             for i, t in enumerate(topics, 1):
                 mark = "x" if t["name"] in selected else " "
-                print_fn(f"  [{mark}] {i:2d}. {t['name']}  ({t.get('type') or 'type unknown'}){badge(t)}")
+                type_str = t.get("type") or "type unknown"
+                print_fn(f"  [{mark}] {i:2d}. {t['name']}  ({type_str}){badge(t)}")
             if args.yes:
                 break
             reply = ask("Toggle by number (e.g. 1,3), a=all, n=none, Enter=accept: ")
@@ -301,7 +363,10 @@ def main(argv: list[str] | None = None, *, input_fn=input, print_fn=print) -> in
                     else:
                         selected.add(name)
         chosen = [(t["name"], t.get("type") or "") for t in topics if t["name"] in selected]
-        unresolvable = [t["name"] for t in topics if t["name"] in selected and not t.get("resolvable", True)]
+        unresolvable = [
+            t["name"] for t in topics
+            if t["name"] in selected and not t.get("resolvable", True)
+        ]
         if unresolvable:
             print_fn(
                 "\nwarning: selected topics with unbuilt message types (they will be "
@@ -366,7 +431,9 @@ def main(argv: list[str] | None = None, *, input_fn=input, print_fn=print) -> in
         if do_restart:
             rc = subprocess.call(["systemctl", "restart", "missiondebug-agent"])
             if rc == 0:
-                print_fn("Agent restarted. Check: journalctl -u missiondebug-agent -n 20 --no-pager")
+                print_fn(
+                    "Agent restarted. Check: journalctl -u missiondebug-agent -n 20 --no-pager"
+                )
             else:
                 print_fn("Could not restart (not root?): sudo systemctl restart missiondebug-agent")
     else:
