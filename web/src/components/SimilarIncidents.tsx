@@ -11,16 +11,23 @@
  * those would erode trust; we explain instead.
  */
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import {
   getResolution,
   getSimilarSessions,
+  putResolution,
+  type Resolution,
   type SimilarIncident,
 } from "../api/sessions";
 import { Card } from "./ui/Card";
 import { ResolutionBadge } from "./ResolutionPanel";
 import { Skeleton } from "./ui/Skeleton";
+
+/** Similarity above which the top match is offered as a one-click duplicate.
+ * TF-IDF over structured summaries scores same-rule same-robot repeats well
+ * above this; unrelated incidents land far below. */
+const SUGGEST_THRESHOLD = 0.55;
 
 interface Props {
   sessionId: string;
@@ -109,12 +116,80 @@ export function SimilarIncidents({ sessionId, hasSummary }: Props) {
   return (
     <Card className="bg-bg/50">
       <Header count={matches.length} />
+      <DuplicateSuggestion sessionId={sessionId} top={matches[0]} />
       <div className="grid gap-2">
         {matches.map((m) => (
           <SimilarRow key={m.session_id} m={m} />
         ))}
       </div>
     </Card>
+  );
+}
+
+/**
+ * One-click triage for the recurring half of incidents: when the top match
+ * is strong and this session hasn't been resolved yet, offer "mark as
+ * duplicate" right here. Marking feeds the recurrence KPI (explicit
+ * operator-confirmed duplicates only — the suggestion never self-applies).
+ */
+function DuplicateSuggestion({
+  sessionId,
+  top,
+}: {
+  sessionId: string;
+  top: SimilarIncident;
+}) {
+  const qc = useQueryClient();
+  const { data: current } = useQuery({
+    queryKey: ["resolution", sessionId],
+    queryFn: () => getResolution(sessionId),
+    staleTime: 30_000,
+  });
+
+  const mark = useMutation({
+    mutationFn: () =>
+      putResolution(sessionId, {
+        status: "duplicate",
+        duplicate_of: top.session_id,
+        // Preserve anything the operator already wrote.
+        root_cause: current?.root_cause ?? null,
+        linked_ticket: current?.linked_ticket ?? null,
+      }),
+    onSuccess: (saved: Resolution) => {
+      qc.setQueryData(["resolution", sessionId], saved);
+      qc.invalidateQueries({ queryKey: ["fleet-incident-stats"] });
+      qc.invalidateQueries({ queryKey: ["similar", sessionId] });
+    },
+  });
+
+  const undecided =
+    !current || current.status === "open" || current.status === "investigating";
+  if (top.score < SUGGEST_THRESHOLD || !undecided) return null;
+
+  return (
+    <div className="flex items-center gap-2 flex-wrap text-xs border border-accent/40 bg-accent/10 rounded px-2.5 py-2 mb-2">
+      <span>
+        ⚡ Looks like a repeat of{" "}
+        <Link
+          to={`/sessions/${encodeURIComponent(top.session_id)}`}
+          className="font-mono text-accent hover:underline"
+        >
+          {top.session_id}
+        </Link>{" "}
+        ({scorePct(top.score)} similar)
+      </span>
+      <button
+        type="button"
+        onClick={() => mark.mutate()}
+        disabled={mark.isPending}
+        className="ml-auto px-2 py-1 rounded border border-accent text-accent hover:bg-accent/20 disabled:opacity-50"
+      >
+        {mark.isPending ? "Marking…" : "Mark as duplicate"}
+      </button>
+      {mark.isError ? (
+        <span className="text-accent w-full">Failed: {String(mark.error)}</span>
+      ) : null}
+    </div>
   );
 }
 
