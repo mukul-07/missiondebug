@@ -19,6 +19,10 @@ on:
         description: "Also publish the apt repo to gh-pages (recovery for a failed tag publish)"
         type: boolean
         default: false
+      version:
+        description: "Deb version for this build (e.g. 0.8.0). Required with publish_apt — a dispatch without it builds 0.0.0~dev debs that the pool pruning discards."
+        type: string
+        default: ""
 
 permissions:
   contents: write
@@ -45,9 +49,13 @@ jobs:
 
       - name: Compute version
         id: ver
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
             echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          elif [ -n "${INPUT_VERSION}" ]; then
+            echo "version=${INPUT_VERSION#v}" >> "$GITHUB_OUTPUT"
           else
             echo "version=0.0.0~dev${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
           fi
@@ -112,9 +120,13 @@ jobs:
 
       - name: Compute version
         id: ver
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
             echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          elif [ -n "${INPUT_VERSION}" ]; then
+            echo "version=${INPUT_VERSION#v}" >> "$GITHUB_OUTPUT"
           else
             echo "version=0.0.0~dev${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
           fi
@@ -259,7 +271,16 @@ jobs:
 
       - name: Publish to gh-pages
         if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && inputs.publish_apt)
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
+          # A dispatch publish without an explicit version builds 0.0.0~dev
+          # debs, which the pool pruning correctly discards — publishing that
+          # would silently ship an unchanged pool. Fail loudly instead.
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] && [ -z "${INPUT_VERSION}" ]; then
+            echo "publish_apt requires an explicit version (e.g. -f version=0.8.0)" >&2
+            exit 1
+          fi
           # Commit ON TOP of the existing gh-pages history. The old approach
           # (fresh orphan commit + force-push) re-uploaded the ENTIRE deb pool
           # every release; at v0.8.0 the pack got big enough that GitHub's
