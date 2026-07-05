@@ -9,8 +9,12 @@
 #               *_ubuntu24.04_*.deb, *_all.deb)
 #   <repo-dir>  output tree. May already contain a previous repo state
 #               (checked out from gh-pages) — new debs are ADDED to the
-#               pool so older releases stay installable; indexes are
-#               regenerated over everything present.
+#               pool, then the pool is PRUNED to the newest
+#               MD_APT_KEEP_VERSIONS (default 3) versions per package.
+#               GitHub Pages refuses sites over ~1GB (v0.8.0's deploy
+#               failed at 2.8GB of accumulated pool), and every pruned
+#               version remains downloadable from its GitHub Release.
+#               Indexes are regenerated over what remains.
 #
 # Layout produced (apt standard):
 #   pool/jammy/*.deb           Ubuntu 22.04 / ROS 2 Humble packages
@@ -64,6 +68,29 @@ for suite in $SUITES; do
         found=1
     done
     [ "$found" = 1 ] || { echo "no debs found for $suite ($tag) in $DEBS" >&2; exit 1; }
+done
+
+# ---- prune: keep the newest N versions per package ---------------------------
+# GitHub Pages hard-fails deploys once the published site outgrows ~1GB.
+# Older versions stay downloadable from their GitHub Releases.
+
+KEEP_VERSIONS="${MD_APT_KEEP_VERSIONS:-3}"
+
+for suite in $SUITES; do
+    pkgs="$(find "$REPO/pool/$suite" -name '*.deb' -exec basename {} \; \
+        | cut -d_ -f1 | sort -u)"
+    for pkg in $pkgs; do
+        keep="$(find "$REPO/pool/$suite" -name "${pkg}_*.deb" -exec basename {} \; \
+            | cut -d_ -f2 | sort -u -V | tail -n "$KEEP_VERSIONS" | tr '\n' ' ')"
+        for f in "$REPO/pool/$suite/${pkg}"_*.deb; do
+            [ -e "$f" ] || continue
+            v="$(basename "$f" | cut -d_ -f2)"
+            case " $keep " in
+                *" $v "*) ;;
+                *) rm -f "$f"; echo "pruned from pool ($suite): $(basename "$f")" ;;
+            esac
+        done
+    done
 done
 
 # ---- indexes + signed Release per suite -------------------------------------
