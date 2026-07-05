@@ -21,15 +21,15 @@ Description: MissionDebug ROS 2 agent
  Control API: http://127.0.0.1:7000
 
 Package: missiondebug-agent
-Version: 0.7.8
+Version: 0.7.9
 Architecture: amd64
 Maintainer: MissionDebug <noreply@missiondebug.local>
 Depends: python3.10, python3.10-venv, ros-humble-ros-base | ros-jazzy-ros-base, ros-humble-tf2-msgs | ros-jazzy-tf2-msgs, ros-humble-geometry-msgs | ros-jazzy-geometry-msgs, ros-humble-nav-msgs | ros-jazzy-nav-msgs, ros-humble-sensor-msgs | ros-jazzy-sensor-msgs, adduser
-Filename: pool/jammy/missiondebug-agent_0.7.8_ubuntu22.04_amd64.deb
-Size: 13807608
-MD5sum: ef8946dd56cb6a4395f7c930e2ac451a
-SHA1: f55ba46f4bbcec3c130c66db1221e7ee5e000533
-SHA256: 263afb69ddf50817754f50c3cede6364a6d9c0884c530c3c6a36dd347d60565d
+Filename: pool/jammy/missiondebug-agent_0.7.9_ubuntu22.04_amd64.deb
+Size: 13811028
+MD5sum: aebd99b5a84d4407e2d400db8ba54f7d
+SHA1: 70ae3da2f4da547e6f50d21574cd6b04d8dee18a
+SHA256: 49e39286e7843a4cef61f3f892003c7aadd5039802c1474b4fb52cec44ca4919
 Section: misc
 Priority: optional
 Description: MissionDebug ROS 2 agent
@@ -43,15 +43,15 @@ Description: MissionDebug ROS 2 agent
  Control API: http://127.0.0.1:7000
 
 Package: missiondebug-agent
-Version: 0.7.9
+Version: 0.8.0
 Architecture: amd64
 Maintainer: MissionDebug <noreply@missiondebug.local>
 Depends: python3.10, python3.10-venv, ros-humble-ros-base | ros-jazzy-ros-base, ros-humble-tf2-msgs | ros-jazzy-tf2-msgs, ros-humble-geometry-msgs | ros-jazzy-geometry-msgs, ros-humble-nav-msgs | ros-jazzy-nav-msgs, ros-humble-sensor-msgs | ros-jazzy-sensor-msgs, adduser
-Filename: pool/jammy/missiondebug-agent_0.7.9_ubuntu22.04_amd64.deb
-Size: 13811028
-MD5sum: aebd99b5a84d4407e2d400db8ba54f7d
-SHA1: 70ae3da2f4da547e6f50d21574cd6b04d8dee18a
-SHA256: 49e39286e7843a4cef61f3f892003c7aadd5039802c1474b4fb52cec44ca4919
+Filename: pool/jammy/missiondebug-agent_0.8.0_ubuntu22.04_amd64.deb
+Size: 13815418
+MD5sum: 19086996c14233938c2bd004ca0fe447
+SHA1: 00b27fa3065ea89b32637acf81c3d0ed580fdb49
+SHA256: 2da2870f041ddd74d316baa38becf0a34dff3d538a0053f5d852083b7a3cdbfb
 Section: misc
 Priority: optional
 Description: MissionDebug ROS 2 agent
@@ -88,16 +88,16 @@ Description: MissionDebug backend API + session index
  Data: /var/lib/missiondebug/missiondebug.sqlite3
 
 Package: missiondebug-backend
-Version: 0.7.8
+Version: 0.7.9
 Architecture: amd64
 Maintainer: MissionDebug <noreply@missiondebug.local>
 Depends: python3.10, python3.10-venv, adduser
 Recommends: missiondebug-web
-Filename: pool/jammy/missiondebug-backend_0.7.8_ubuntu22.04_amd64.deb
-Size: 18932828
-MD5sum: 0ec29bafdbcaa6e941dd3b879a89d794
-SHA1: b3a59dcc9e9606eaa03f52dc939fb66ed0701d24
-SHA256: de76632fcd4725d62d1d8135d43fec6999dbd9c5620db6ca15fca69613f8d46d
+Filename: pool/jammy/missiondebug-backend_0.7.9_ubuntu22.04_amd64.deb
+Size: 18930310
+MD5sum: 86659b14abf5e1a9f6e4e7c470302904
+SHA1: 83e7dbf8156a8204cb6f74334c10a0f8ff085e83
+SHA256: f8e60be42fb067f62836e0ca08692dde987a019c40c38981e47f904496f6c735
 Section: misc
 Priority: optional
 Description: MissionDebug backend API + session index
@@ -111,16 +111,16 @@ Description: MissionDebug backend API + session index
  Data: /var/lib/missiondebug/missiondebug.sqlite3
 
 Package: missiondebug-backend
-Version: 0.7.9
+Version: 0.8.0
 Architecture: amd64
 Maintainer: MissionDebug <noreply@missiondebug.local>
 Depends: python3.10, python3.10-venv, adduser
 Recommends: missiondebug-web
-Filename: pool/jammy/missiondebug-backend_0.7.9_ubuntu22.04_amd64.deb
-Size: 18930310
-MD5sum: 86659b14abf5e1a9f6e4e7c470302904
-SHA1: 83e7dbf8156a8204cb6f74334c10a0f8ff085e83
-SHA256: f8e60be42fb067f62836e0ca08692dde987a019c40c38981e47f904496f6c735
+Filename: pool/jammy/missiondebug-backend_0.8.0_ubuntu22.04_amd64.deb
+Size: 18932272
+MD5sum: 09603f16541602af3a6fc7d7f8c5e916
+SHA1: c1804dbc6c661422a78264c2a9b86aac9183de29
+SHA256: ffb029e502d0556266eb0a2836338dbb11458b8a5bb4107bb51eb98a5c1ab6d7
 Section: misc
 Priority: optional
 Description: MissionDebug backend API + session index
@@ -154,15 +154,15 @@ Description: MissionDebug web UI (static dist)
  files on the same port.
 
 Package: missiondebug-web
-Version: 0.7.8
+Version: 0.7.9
 Architecture: all
 Maintainer: MissionDebug <noreply@missiondebug.local>
 Depends: missiondebug-backend
-Filename: pool/jammy/missiondebug-web_0.7.8_all.deb
-Size: 261156
-MD5sum: 66a386f202b5ec8155e853eabe415230
-SHA1: 2059d9da3bdb9f6d80eca3f5f3682c7b827e640d
-SHA256: 79495147564020629d825fada713ab81ee8d4d4c07644e7aeaec64372b6b88e0
+Filename: pool/jammy/missiondebug-web_0.7.9_all.deb
+Size: 261182
+MD5sum: 765acd9a7bc1532745500117b7b817d2
+SHA1: 569dbd5ce8987d3928542f8dc088150e824786cb
+SHA256: ab1544c386f6923247700b4b64f39c6dcf4c790fa6a5e9d2d609c1c93f741cc9
 Section: misc
 Priority: optional
 Description: MissionDebug web UI (static dist)
@@ -174,15 +174,15 @@ Description: MissionDebug web UI (static dist)
  files on the same port.
 
 Package: missiondebug-web
-Version: 0.7.9
+Version: 0.8.0
 Architecture: all
 Maintainer: MissionDebug <noreply@missiondebug.local>
 Depends: missiondebug-backend
-Filename: pool/jammy/missiondebug-web_0.7.9_all.deb
-Size: 261182
-MD5sum: 765acd9a7bc1532745500117b7b817d2
-SHA1: 569dbd5ce8987d3928542f8dc088150e824786cb
-SHA256: ab1544c386f6923247700b4b64f39c6dcf4c790fa6a5e9d2d609c1c93f741cc9
+Filename: pool/jammy/missiondebug-web_0.8.0_all.deb
+Size: 266594
+MD5sum: ba5903d1e9548fe3b28a979783f944e2
+SHA1: db51c67cab58772237ec6c9ec8783e01f3b12287
+SHA256: 1e37b889600eec7d846b688e2d9c82932f5dbbc98aa5c182f992d05f276527a5
 Section: misc
 Priority: optional
 Description: MissionDebug web UI (static dist)
