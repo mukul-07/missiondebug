@@ -75,7 +75,26 @@ No ROS install, no source checkout, just Docker. See [missiondebug-demos](https:
 
 ## Install on a real robot
 
-**Via the apt repository** (recommended, `apt upgrade` picks up new versions):
+**One command** — adds the signed apt repository, installs, and wires the config. Idempotent; add `--dry-run` to preview what it would do:
+
+```bash
+# Single machine — robot + local dashboard (agent, backend, web UI):
+curl -fsSL https://raw.githubusercontent.com/mukul-07/missiondebug/main/scripts/install.sh \
+  | sudo bash -s -- --all
+
+# Fleet robot reporting to a central hub (agent only):
+curl -fsSL https://raw.githubusercontent.com/mukul-07/missiondebug/main/scripts/install.sh \
+  | sudo bash -s -- --hub-url http://<your-hub>:8000
+
+# The hub machine itself (backend + web UI, no agent):
+curl -fsSL https://raw.githubusercontent.com/mukul-07/missiondebug/main/scripts/install.sh \
+  | sudo bash -s -- --hub
+```
+
+Rolling out a whole fleet? [`examples/ansible/`](./examples/ansible/) is a copy-paste playbook: per-robot `robot_id` from the inventory, your hub URL and topics as group vars.
+
+<details>
+<summary>Prefer to run the apt commands yourself?</summary>
 
 ```bash
 sudo install -d /etc/apt/keyrings
@@ -88,7 +107,11 @@ sudo apt update
 sudo apt install missiondebug-agent missiondebug-backend missiondebug-web
 ```
 
-Suites: `jammy` (Ubuntu 22.04 / ROS 2 Humble) and `noble` (Ubuntu 24.04 / ROS 2 Jazzy); `amd64` and `arm64` (Jetson, Pi). Robots that only capture need just `missiondebug-agent`; a central hub machine needs `missiondebug-backend missiondebug-web`.
+Robots that only capture need just `missiondebug-agent`; a central hub machine needs `missiondebug-backend missiondebug-web`. If everything runs on one machine, also add `hub: { url: "http://127.0.0.1:8000" }` to `/etc/missiondebug/config.yaml` so the local dashboard's Agents page and live topic discovery work — the installer's `--all` does this for you.
+
+</details>
+
+Suites: `jammy` (Ubuntu 22.04 / ROS 2 Humble) and `noble` (Ubuntu 24.04 / ROS 2 Jazzy); `amd64` and `arm64` (Jetson, Pi).
 
 **Or grab the `.deb`s directly** from the [latest release](https://github.com/mukul-07/missiondebug/releases/latest) (one-off installs, air-gapped robots):
 
@@ -120,7 +143,7 @@ That's it. All three start automatically and run at boot:
 
 | Service | Port | Purpose |
 |---|---|---|
-| `missiondebug-agent` | `127.0.0.1:7000` | Subscribes to ROS topics, writes MCAPs on anomaly |
+| `missiondebug-agent` | `:7000` (loopback by default; all interfaces when hub-wired) | Subscribes to ROS topics, writes MCAPs on anomaly |
 | `missiondebug-backend` | `0.0.0.0:8000` | Indexes MCAPs, serves UI + API |
 | (web: static files served by backend) | n/a | UI at `http://<robot>:8000` |
 
@@ -134,15 +157,24 @@ Working on MissionDebug itself? [CONTRIBUTING.md](./CONTRIBUTING.md) covers runn
 
 ### 1. Configure the agent for your robot
 
-The default config captures `/cmd_vel`, `/tf`, `/plan`, and a camera. To match your stack, edit:
+Two things every robot needs: a **unique `robot_id`** (two robots sharing one id collide into a single entry on the hub — set it before anything else) and the list of **topics to capture**.
+
+The fastest way is the setup wizard — it scans the live ROS graph, pre-checks the topics worth capturing (and warns about ones that *can't* capture, e.g. message packages that aren't built), asks for the robot id and hub URL, and writes the config itself:
+
+```bash
+sudo missiondebug-agent init
+# non-interactive (accept all recommendations):
+sudo missiondebug-agent init --yes --hub-url http://<your-hub>:8000
+```
+
+Or edit by hand:
 
 ```bash
 sudo nano /etc/missiondebug/config.yaml
 sudo systemctl restart missiondebug-agent
-journalctl -u missiondebug-agent -n 30 --no-pager
 ```
 
-You should see `Subscribed to <topic> [<type>]` for every topic in your config, plus `Loaded N config-driven rule(s)` if you added rules.
+To verify: open the dashboard's **Agents** page and expand your robot's **▸ topics** — it shows every topic on the robot's graph, whether it's being captured, and flags problems (type not built, no publishers). The same check runs automatically from then on: a **⚠ badge** appears on the robot's row if a configured topic stops being capturable. CLI equivalent: `journalctl -u missiondebug-agent -n 30 --no-pager` should show `Subscribed to <topic> [<type>]` for every topic in your config.
 
 For ready-to-edit starting points see [examples/](./examples/):
 - [`ground-vehicle-config.yaml`](./examples/ground-vehicle-config.yaml): AMRs, delivery bots, indoor service robots
@@ -244,8 +276,14 @@ journalctl -u missiondebug-backend -f     # tail backend/UI logs
 ls -lh /var/lib/missiondebug/sessions/
 curl -s http://localhost:8000/api/sessions | jq '.sessions[0:3]'
 
-# Trigger a stall manually (publishes zero cmd_vel for 6s)
-timeout 6 ros2 topic pub -r 10 /cmd_vel geometry_msgs/Twist '{linear: {x: 0.0}}'
+# Capture the last 60s right now (always safe — no motion involved)
+curl -X POST http://localhost:7000/sessions/save
+
+# Test the stall detector: command motion while the robot can't move.
+# ⚠ Only with the base e-stopped / wheels off the ground — a live base WILL move.
+# (Stall = commanded velocity above the threshold while odometry reports no
+# motion, so publishing zeros can never trigger it.)
+timeout 6 ros2 topic pub -r 10 /cmd_vel geometry_msgs/msg/Twist '{linear: {x: 0.5}}'
 ```
 
 ### 7. Common gotchas
@@ -260,7 +298,8 @@ timeout 6 ros2 topic pub -r 10 /cmd_vel geometry_msgs/Twist '{linear: {x: 0.0}}'
   echo 'export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp' >> ~/.bashrc
   sudo systemctl restart missiondebug-agent
   ```
-- **No sessions appearing:** verify the topics in your config exist (`ros2 topic list`), the rule loaded (`journalctl -u missiondebug-agent | grep Loaded`), and the condition is actually being met. Try the manual stall trigger above first.
+- **Custom message types (px4_msgs and friends):** a topic whose message package isn't built and sourced on the robot is **skipped** — the agent logs `Skipping topic <name>: cannot resolve message type` and captures everything else. Since agent 0.7.4 built colcon workspaces are auto-sourced, so this usually just works; for unusual install locations set `ros_setup_files` in the config (or `MD_ROS_SETUP_FILES`, colon-separated setup.bash paths). The Agents page flags affected topics with a red **type not built** badge.
+- **No sessions appearing:** verify the topics in your config exist (`ros2 topic list`), the rule loaded (`journalctl -u missiondebug-agent | grep Loaded`), and the condition is actually being met. Try the manual save above first — it proves the capture path independent of any rule.
 - **ROS 1 + ROS 2 env mixed:** if your shell shows `ROS_MASTER_URI` alongside `ROS_DISTRO=humble`, your `~/.bashrc` is sourcing both. Comment out the noetic line.
 
 ---

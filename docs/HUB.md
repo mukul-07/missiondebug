@@ -67,25 +67,67 @@ the hub.
 ## 4. Send captures to the hub
 
 For captures to actually appear in the hub, the robot's agent has to know the
-hub address. The robot **POSTs** its capture metadata to the hub, so:
+hub address — and the hub has to be able to reach the agent back (that's how
+replay streams the recording off the robot, and how live topic discovery
+works). Three config keys on each robot, all in
+`/etc/missiondebug/config.yaml`:
 
-- The robot must be able to reach the hub URL. On the **same LAN** this is
-  automatic. Across **different sites**, put the hub somewhere the robots can
-  reach (a public IP or a VPN); a private `192.168.x.x` address is only
-  reachable from that LAN.
-- Set `hub.url` in the agent config to your hub address:
+```yaml
+http_host: "0.0.0.0"    # bind beyond loopback, or the hub can't reach back
 
-  ```yaml
-  hub:
-    url: "http://<that-machine>:8000"
-  ```
+hub:
+  url: "http://<hub-machine>:8000"          # where this robot reports
+  agent_url: "http://<this-robot-ip>:7000"  # how the hub calls back
+```
 
-  For a standalone `.deb` install this is `/etc/missiondebug/config.yaml`;
-  restart the agent after editing (`sudo systemctl restart missiondebug-agent`).
+Restart the agent after editing: `sudo systemctl restart missiondebug-agent`.
+(The one-line installer's `--hub-url` flag and `missiondebug-agent init`
+both write all three for you.)
 
-The agent then posts each capture's metadata to the hub as it happens, and the
-hub's dashboard shows your fleet's incidents in one place. Open any capture to
-scrub its timeline, including the camera frames captured around the incident:
+Network notes:
+
+- The robot must reach the hub URL, and the hub must reach the robot's
+  port `7000` (open it in the robot's firewall if you run one). On the
+  **same LAN** this is automatic. Across **different sites**, put the hub
+  somewhere the robots can reach (a public IP or a VPN); a private
+  `192.168.x.x` address is only reachable from that LAN.
+- Without `agent_url` (or with the default loopback bind), capture
+  *metadata* still arrives — the dashboard, summaries and similarity all
+  work — but opening a recording shows "recording unavailable" and the
+  topics panel can't scan the robot.
+
+## 5. Verify it worked
+
+Within ~60 seconds of the restart, the robot appears on the hub's
+**Agents** page (`http://<hub>:8000/fleet/agents`) with a green heartbeat.
+Expand its **▸ topics** row: you should see the robot's live ROS graph,
+with warnings on anything that can't capture (type not built, no
+publishers). If a configured topic later breaks, a **⚠ badge** appears on
+the robot's row automatically. Trigger a test capture
+(`curl -X POST http://<robot>:7000/sessions/save`) and it lands at the top
+of the Sessions page.
+
+## 6. Protect the hub (fleet mode)
+
+A hub that aggregates a fleet should require a password. Set two
+environment variables where the backend runs (for a `.deb` install:
+`/etc/missiondebug/backend.env`, then
+`sudo systemctl restart missiondebug-backend`):
+
+```bash
+MD_MODE=fleet
+MD_HUB_AUTH_PASSWORD=<pick-a-strong-one>
+```
+
+In fleet mode the backend **refuses to start without a password** (Hard
+Rule: auth defaults on for fleets). Agents authenticate with the same
+secret via `hub.auth_token` in their config; browsers get a login prompt.
+Single-robot installs can stay open (`MD_MODE=single`, the default).
+
+From then on the agent posts each capture's metadata to the hub as it
+happens, and the hub's dashboard shows your fleet's incidents in one
+place. Open any capture to scrub its timeline, including the camera
+frames captured around the incident:
 
 ![A captured session in the hub: synchronized camera feeds, pose track, timeline scrubber, and a message inspector at the playhead](screenshot-detail.png)
 

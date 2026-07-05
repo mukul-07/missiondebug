@@ -196,6 +196,20 @@ Errors: `404` unknown robot · `409` agent reported no reachable URL (e.g.
 Unix-socket-only) · `426` agent predates `GET /topics` (needs ≥ 0.7.0) ·
 `502` agent unreachable or returned a bad payload.
 
+Heartbeats may carry a `topics_health` summary — the agent's own check of
+its capture config against the live ROS graph:
+
+```json
+{"robot_id": "amr-01", "agent_version": "0.8.0",
+ "topics_health": {"ok": 5, "missing": [], "silent": ["/odom"],
+                   "unresolvable": ["/fmu/out/vehicle_odometry"]}}
+```
+
+The latest value is stored on the agent row and surfaced by both
+`GET /api/v1/agents` and `GET /api/v1/agents/health` (`null` when the
+agent doesn't report it); the dashboard renders it as the per-robot
+⚠ badge. A heartbeat without the field clears the stored value.
+
 ### Admin
 
 | Method | Path | Summary |

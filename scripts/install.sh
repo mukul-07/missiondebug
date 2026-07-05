@@ -120,6 +120,14 @@ run apt-get install -y $PKGS
 
 # ---- optional hub wiring ---------------------------------------------------
 
+# Single-machine installs (--all) get the local backend as their hub by
+# default, so the dashboard's Agents page + live topic discovery work out
+# of the box. An explicit --hub-url always wins.
+if [ "$MODE" = all ] && [ -z "$HUB_URL" ]; then
+  HUB_URL="http://127.0.0.1:8000"
+  log "single-machine install: wiring the agent to the local hub ($HUB_URL)"
+fi
+
 if [ -n "$HUB_URL" ]; then
   case "$MODE" in
     hub) warn "--hub-url is for robots running the agent; ignoring on a hub-only install" ;;
