@@ -107,6 +107,8 @@ the robot's row automatically. Trigger a test capture
 (`curl -X POST http://<robot>:7000/sessions/save`) and it lands at the top
 of the Sessions page.
 
+![The Agents page with a robot's topics panel expanded: live ROS topics grouped by category, capture pre-checks, and badges for topics that can't capture](screenshot-topics.png)
+
 ## 6. Protect the hub (fleet mode)
 
 A hub that aggregates a fleet should require a password. Set two

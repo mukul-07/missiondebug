@@ -16,6 +16,8 @@ And you can **ask the whole history in plain English** (*"why does warehouse-bot
 
 ![Fleet incident dashboard: recurrence rate, MTTR, estimated re-investigation time avoided, top recurring patterns, captures per robot](docs/screenshot-incidents.png)
 
+![Ask AI: a plain-English question over the incident history, answered with the sessions it used as clickable citations](docs/screenshot-ask.png)
+
 Under the hood it's a focused capture layer: an agent runs alongside your ROS 2 stack, keeps a rolling buffer of the topics you care about, and writes a standard MCAP the moment a detector fires: stall (commanded-but-not-moving, so a parked robot never false-fires), path deviation, low battery, topic dropout, a cross-topic comparison rule, or any threshold rule you write in YAML. The recording path runs in native code, so it stays light on the robot even with high-rate topics like camera and lidar, which matters on compute-constrained hardware like Jetson. Open the web UI, click a session, scrub the timeline. Annotate the moment, share a deep-linked URL with a teammate.
 
 **Works on any ROS 2 robot:** warehouse AMRs, drones (mavros), manipulators (MoveIt2), agriculture, defense. The agent is topic-agnostic; the warehouse AGV is just the running example. The replay renders camera, pose, velocity, **per-joint** (manipulators), and auto scalar charts from whatever topics you capture. See [`examples/`](./examples/) for ready-to-edit configs per robot type.
@@ -65,7 +67,7 @@ Most ROS debugging tools assume you knew to start recording. MissionDebug always
 
 > Sessions auto-save when a detector fires; the label tells you why. Click one to scrub the timeline.
 
-![Session detail: chart + pose track + annotation at the playhead](docs/screenshot-detail.png)
+![Session detail: synchronized camera replay, pose, timeline with playhead, and a message inspector](docs/screenshot-detail.png)
 
 ---
 
