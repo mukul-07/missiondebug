@@ -14,6 +14,11 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      publish_apt:
+        description: "Also publish the apt repo to gh-pages (recovery for a failed tag publish)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -253,14 +258,38 @@ jobs:
           test -f /var/lib/missiondebug/web/index.html
 
       - name: Publish to gh-pages
-        if: github.ref_type == 'tag'
+        if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && inputs.publish_apt)
         run: |
-          cd /tmp/apt-tree
-          git init -b gh-pages
+          # Commit ON TOP of the existing gh-pages history. The old approach
+          # (fresh orphan commit + force-push) re-uploaded the ENTIRE deb pool
+          # every release; at v0.8.0 the pack got big enough that GitHub's
+          # HTTP push endpoint returned 500. A history-preserving commit
+          # transfers only the new/changed files (~one release's worth).
+          REPO_URL="https://x-access-token:${{ github.token }}@github.com/${GITHUB_REPOSITORY}.git"
+          if git clone --depth 1 --branch gh-pages "$REPO_URL" /tmp/apt-pages 2>/dev/null; then
+            rsync -a --delete --exclude '.git' /tmp/apt-tree/ /tmp/apt-pages/
+          else
+            # First-ever publish: no gh-pages branch yet.
+            mkdir -p /tmp/apt-pages
+            rsync -a /tmp/apt-tree/ /tmp/apt-pages/
+            git -C /tmp/apt-pages init -b gh-pages
+            git -C /tmp/apt-pages remote add origin "$REPO_URL"
+          fi
+          cd /tmp/apt-pages
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
+          if git diff --cached --quiet; then
+            echo "apt tree unchanged — nothing to publish"
+            exit 0
+          fi
           git commit -m "apt repo: ${GITHUB_REF_NAME}"
-          git push --force \
-            "https://x-access-token:${{ github.token }}@github.com/${GITHUB_REPOSITORY}.git" \
-            gh-pages
+          # Retry transient GitHub 5xx on push.
+          for i in 1 2 3; do
+            if git push origin gh-pages; then
+              exit 0
+            fi
+            echo "push attempt $i failed; retrying in 20s" >&2
+            sleep 20
+          done
+          exit 1
