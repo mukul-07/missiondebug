@@ -461,6 +461,28 @@ def build_app(
     return app
 
 
+# Where the missiondebug-web .deb installs the built UI. Used as the
+# --web-dir fallback so a backend.env without MD_WEB_DIR (or an emptied one)
+# can't silently turn the dashboard off — a real field failure: API up, UI
+# a bare JSON 404, no error anywhere.
+DEB_WEB_DIR = Path("/var/lib/missiondebug/web")
+
+
+def _resolve_web_dir(arg: str) -> Path | None:
+    """Explicit CLI/env value wins; empty auto-detects the .deb web install.
+
+    The fallback only fires when the standard directory holds an actual
+    build (index.html present), so headless installs stay headless. To
+    force headless with web files on disk, set MD_WEB_DIR to a
+    non-existent path.
+    """
+    if arg:
+        return Path(arg)
+    if (DEB_WEB_DIR / "index.html").is_file():
+        return DEB_WEB_DIR
+    return None
+
+
 def main() -> None:
     logging.basicConfig(
         level=logging.INFO,
@@ -503,7 +525,11 @@ def main() -> None:
     parser.add_argument(
         "--web-dir",
         default=os.environ.get("MD_WEB_DIR", ""),
-        help="Directory of the built web UI to serve at /. Empty = don't serve UI.",
+        help=(
+            "Directory of the built web UI to serve at /. Empty = serve "
+            f"{DEB_WEB_DIR} if it holds a build (the missiondebug-web .deb), "
+            "else run headless."
+        ),
     )
     args = parser.parse_args()
 
@@ -523,7 +549,7 @@ def main() -> None:
         max_disk_mb=args.max_disk_mb,
         cold_after_days=args.cold_after_days,
         delete_after_days=args.delete_after_days,
-        web_dir=Path(args.web_dir) if args.web_dir else None,
+        web_dir=_resolve_web_dir(args.web_dir),
         auth_config=auth_cfg,
     )
     uvicorn.run(app, host=args.host, port=args.port)
