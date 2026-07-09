@@ -133,11 +133,19 @@ sudo apt install fakeroot dpkg-dev python3-pip python3-venv nodejs
 sudo npm install -g pnpm
 make package
 ls dist/
-# missiondebug-agent_1.0.0_<arch>.deb       captures sessions
-# missiondebug-backend_1.0.0_<arch>.deb     API + session index + retention
-# missiondebug-web_1.0.0_all.deb            static UI (backend serves it)
+# missiondebug-agent_<version>_<arch>.deb     captures sessions
+# missiondebug-backend_<version>_<arch>.deb   API + session index + retention
+# missiondebug-web_<version>_all.deb          static UI (backend serves it)
 sudo apt install ./dist/*.deb
 ```
+
+A source build defaults to version `1.0.0`, which apt treats as newer than the real `0.8.x` releases. If you install a source build and later add the apt repository, apt will say the package is "already the newest version" and never upgrade you to a real release. To avoid this, stamp a matching version at build time:
+
+```bash
+MD_VERSION=0.8.1 make package
+```
+
+If you already installed a `1.0.0` build, switch to a release with `sudo apt install --allow-downgrades missiondebug-web=0.8.1` (and the same for the agent and backend).
 
 </details>
 
@@ -290,16 +298,16 @@ timeout 6 ros2 topic pub -r 10 /cmd_vel geometry_msgs/msg/Twist '{linear: {x: 0.
 
 ### 7. Common gotchas
 
-- **Agent + your shell on different ROS graphs:** if `ros2 node list` from your shell can't see `/missiondebug_agent`, you have a DDS isolation issue (different RMW_IMPLEMENTATION between the systemd service and your shell). Switch the service to Cyclone DDS:
+- **Every topic shows "no publishers" while your nodes are running:** the agent runs as a systemd service with default ROS settings. If your own terminals set a different `ROS_DOMAIN_ID` or `RMW_IMPLEMENTATION`, the agent and your nodes cannot see each other on the network, so the agent sees no publishers. The topics panel on the Agents page shows the agent's own ROS settings (look for the "agent env" line). In the terminal running your nodes, run `printenv | grep -E '^(ROS_|RMW_)'` and compare. To fix it, either clear those variables in your terminal, or set the same values on the service:
   ```bash
-  sudo apt install -y ros-humble-rmw-cyclonedds-cpp
   sudo systemctl edit missiondebug-agent
-  # Add:
+  # Add, using the values your nodes use:
   #   [Service]
-  #   Environment=RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
-  echo 'export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp' >> ~/.bashrc
+  #   Environment=ROS_DOMAIN_ID=<your domain>
+  #   Environment=RMW_IMPLEMENTATION=<your rmw>
   sudo systemctl restart missiondebug-agent
   ```
+  If your nodes use Cyclone DDS, install it on the robot first: `sudo apt install -y ros-humble-rmw-cyclonedds-cpp`.
 - **Custom message types (px4_msgs and friends):** a topic whose message package isn't built and sourced on the robot is **skipped** — the agent logs `Skipping topic <name>: cannot resolve message type` and captures everything else. Since agent 0.7.4 built colcon workspaces are auto-sourced, so this usually just works; for unusual install locations set `ros_setup_files` in the config (or `MD_ROS_SETUP_FILES`, colon-separated setup.bash paths). The Agents page flags affected topics with a red **type not built** badge.
 - **No sessions appearing:** verify the topics in your config exist (`ros2 topic list`), the rule loaded (`journalctl -u missiondebug-agent | grep Loaded`), and the condition is actually being met. Try the manual save above first — it proves the capture path independent of any rule.
 - **ROS 1 + ROS 2 env mixed:** if your shell shows `ROS_MASTER_URI` alongside `ROS_DISTRO=humble`, your `~/.bashrc` is sourcing both. Comment out the noetic line.
@@ -350,7 +358,7 @@ Full recipes + working scripts: [`docs/INTEGRATIONS.md`](./docs/INTEGRATIONS.md)
 ## Tests
 
 ```bash
-make test                    # 283 tests across agent + backend (94 agent + 189 backend)
+make test                    # 398 tests across agent + backend (186 agent + 212 backend)
 ```
 
 ## License
