@@ -80,6 +80,12 @@ hub:
   agent_url: "http://<this-robot-ip>:7000"  # how the hub calls back
 ```
 
+**Change the `http_host` line the default config already has** (under
+"Local control API") rather than pasting a second one above it — YAML
+silently keeps only the *last* duplicate key, so the added line loses
+and the agent stays on loopback. The agent logs a warning at startup if
+its config contains duplicate keys.
+
 Restart the agent after editing: `sudo systemctl restart missiondebug-agent`.
 (The one-line installer's `--hub-url` flag and `missiondebug-agent init`
 both write all three for you.)

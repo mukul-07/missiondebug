@@ -21,6 +21,8 @@ const INSTALL_CMD =
   window.location.origin;
 
 const CONFIG_SNIPPET = `# /etc/missiondebug/config.yaml on the robot
+# CHANGE the existing http_host line (don't add a second one — YAML
+# silently keeps only the last duplicate key):
 http_host: "0.0.0.0"   # so this hub can reach the agent back
 hub:
   url: "${window.location.origin}"
@@ -153,7 +155,9 @@ export function FirstRunChecklist({
         <div className="grid gap-1.5 min-w-0">
           <div className="text-[13px] font-semibold">…or wire an existing agent to this hub</div>
           <p className="text-xs text-muted m-0">
-            Already installed? Add this to the robot's config, then{" "}
+            Already installed? Update the robot's config —{" "}
+            <b>replace its existing <span className="font-mono">http_host</span> line</b>{" "}
+            rather than adding a second one — then{" "}
             <span className="font-mono">sudo systemctl restart missiondebug-agent</span>:
           </p>
           <CopyBlock text={CONFIG_SNIPPET} promptLabel="Copy the config snippet:" />

@@ -2,11 +2,54 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
 
 import yaml
 from pydantic import BaseModel, Field, model_validator
+
+log = logging.getLogger(__name__)
+
+
+def _load_yaml_collect_duplicates(stream: Any) -> tuple[Any, list[str]]:
+    """yaml.safe_load, but also report duplicate mapping keys.
+
+    YAML's default is to silently keep only the LAST occurrence of a
+    duplicate key. In the field that turned a pasted second `http_host:`
+    line into a no-op (the original line below it won, the agent stayed
+    on loopback, and the hub could not reach it back) with no error
+    anywhere. We still load with last-wins semantics — failing hard could
+    take down a working fleet agent on upgrade — but we name the
+    duplicates so the operator can see the problem in the journal.
+    """
+    duplicates: list[str] = []
+
+    class _Loader(yaml.SafeLoader):
+        pass
+
+    def _construct_mapping(loader: yaml.SafeLoader, node: yaml.Node) -> dict:
+        # Count only literally-typed duplicates, BEFORE merge-key
+        # flattening: a `<<:` anchor legitimately overlapping an explicit
+        # key is normal YAML, not an operator mistake. construct_mapping
+        # below does its own flatten_mapping for the actual load.
+        seen: set[Any] = set()
+        for key_node, _value_node in node.value:
+            if key_node.tag == "tag:yaml.org,2002:merge":
+                continue
+            key = loader.construct_object(key_node, deep=True)
+            try:
+                if key in seen:
+                    duplicates.append(str(key))
+                seen.add(key)
+            except TypeError:  # unhashable key; SafeLoader will complain
+                pass
+        return loader.construct_mapping(node, deep=True)
+
+    _Loader.add_constructor(
+        yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _construct_mapping
+    )
+    return yaml.load(stream, _Loader), duplicates
 
 
 class TopicConfig(BaseModel):
@@ -267,5 +310,14 @@ class AgentConfig(BaseModel):
     @classmethod
     def load(cls, path: str | Path) -> AgentConfig:
         with open(path) as f:
-            data = yaml.safe_load(f)
+            data, duplicates = _load_yaml_collect_duplicates(f)
+        if duplicates:
+            log.warning(
+                "config %s contains duplicate key(s): %s — YAML keeps only "
+                "the LAST occurrence of each; the earlier line(s) are "
+                "silently ignored. Common cause: a second 'http_host:' "
+                "pasted above the existing one. Remove the duplicates.",
+                path,
+                ", ".join(sorted(set(duplicates))),
+            )
         return cls.model_validate(data)
