@@ -25,10 +25,34 @@ We return what is visible and never raise to the caller.
 
 from __future__ import annotations
 
+import os
 import re
 import threading
 
 from .ros_bridge import _resolve_msg_type
+
+
+def ros_env() -> dict:
+    """The agent's effective ROS environment, for the hub UI to display.
+
+    When EVERY topic shows zero publishers, the usual cause is the
+    operator's terminals running under a different ROS_DOMAIN_ID / RMW
+    than this agent (a systemd service runs with defaults), so DDS never
+    matches them up. Reporting the agent's side makes the two comparable.
+    """
+    rmw = None
+    try:
+        # The RMW actually loaded, not just the env var (which may be unset).
+        from rclpy.utilities import get_rmw_implementation_identifier
+
+        rmw = get_rmw_implementation_identifier()
+    except Exception:
+        rmw = os.environ.get("RMW_IMPLEMENTATION") or None
+    return {
+        "domain_id": os.environ.get("ROS_DOMAIN_ID") or "0",
+        "rmw": rmw,
+        "distro": os.environ.get("ROS_DISTRO") or None,
+    }
 
 # Heuristic "recommended to capture" patterns: common control + telemetry topics
 # across ground robots, drones (mavros), and manipulators. Transparent and static
@@ -234,7 +258,7 @@ def discover_topics(timeout_s: float = 1.0) -> dict:
     """
     node = _persistent_node()
     if node is None:
-        return {"topics": [], "settled": True}
+        return {"topics": [], "settled": True, "ros_env": ros_env()}
     try:
         import time as _time
 
@@ -270,10 +294,10 @@ def discover_topics(timeout_s: float = 1.0) -> dict:
                 pass
 
         return {"topics": classify_topics(names_and_types, publisher_counts),
-                "settled": settled}
+                "settled": settled, "ros_env": ros_env()}
     except Exception:
         # A scan that BLEW UP is a transient (e.g. the rclpy context torn
         # down mid-request during an agent restart), not an authoritative
         # empty graph; unlike the no-rclpy case above it must not claim
         # settled, or a consumer could take the empty list as truth.
-        return {"topics": [], "settled": False}
+        return {"topics": [], "settled": False, "ros_env": ros_env()}

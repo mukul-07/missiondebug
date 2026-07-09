@@ -244,6 +244,11 @@ def get_router(get_db) -> APIRouter:
             "agent_version": a.agent_version,
             "settled": bool(data.get("settled", False)),
             "topics": topics,
+            # Agent >= 0.8.2: its effective ROS env (domain/rmw/distro), so
+            # the UI can explain an every-topic-has-no-publishers scan
+            # (operator terminals on a different domain/RMW). None for
+            # older agents.
+            "ros_env": data.get("ros_env"),
             "last_capture_topics": last[0].topics if last else None,
             "last_capture_session_id": last[0].id if last else None,
         }

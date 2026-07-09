@@ -87,7 +87,12 @@ def test_discover_topics_returns_empty_without_ros(monkeypatch):
         return real(name, *a, **k)
 
     monkeypatch.setattr(builtins, "__import__", no_rclpy)
-    assert disc.discover_topics() == {"topics": [], "settled": True}
+    result = disc.discover_topics()
+    assert result["topics"] == []
+    assert result["settled"] is True
+    # No ROS = nothing more to wait for, but the env report still ships
+    # (the UI shows it next to the isolation hint).
+    assert "ros_env" in result
 
 
 # --- settle_graph: the DDS settle loop, driven with a fake clock ------------

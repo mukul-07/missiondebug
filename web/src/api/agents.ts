@@ -99,11 +99,18 @@ export interface AgentTopic {
   publishers: number | null; // 0 = advertised but silent; null = unknown
 }
 
+export interface AgentRosEnv {
+  domain_id?: string | null; // effective ROS_DOMAIN_ID ("0" when unset)
+  rmw?: string | null;       // RMW actually loaded by the agent
+  distro?: string | null;    // ROS_DISTRO
+}
+
 export interface AgentTopics {
   robot_id: string;
   agent_version: string | null;
   settled: boolean;      // false = partial DDS scan, list may be incomplete
   topics: AgentTopic[];
+  ros_env?: AgentRosEnv | null; // agent's effective ROS env (agent >= 0.8.2)
   last_capture_topics: string[] | null; // topics in this robot's most recent session
   last_capture_session_id?: string | null; // that session's id (hub >= this build)
 }

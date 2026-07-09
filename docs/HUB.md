@@ -101,6 +101,14 @@ Network notes:
   *metadata* still arrives — the dashboard, summaries and similarity all
   work — but opening a recording shows "recording unavailable" and the
   topics panel can't scan the robot.
+- If **every** topic in the panel shows "no publishers" while your nodes
+  are running, the agent is probably isolated from them: in the terminal
+  running your nodes, compare `printenv | grep -E '^(ROS_|RMW_)'` with
+  the **agent env** line the panel shows (the systemd agent runs with
+  defaults — domain 0, default RMW). Match them by unsetting the vars in
+  your terminal, or give the service the same values via
+  `sudo systemctl edit missiondebug-agent`
+  (`[Service]` + `Environment=ROS_DOMAIN_ID=...`).
 
 ## 5. Verify it worked
 

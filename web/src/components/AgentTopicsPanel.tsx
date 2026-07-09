@@ -127,6 +127,19 @@ export function AgentTopicsPanel({
       ? lastSettledRef.current
       : q.data;
 
+  // Agent's effective ROS env (agent >= 0.8.2; older agents send nothing).
+  const rosEnv = q.data?.ros_env ?? view?.ros_env ?? null;
+  // Every topic advertised but ZERO publishers anywhere: the classic sign
+  // the agent is isolated from the operator's nodes (different
+  // ROS_DOMAIN_ID / RMW in their terminals vs the systemd service's
+  // defaults). Strict === 0 so unknown counts (null, older agents) never
+  // trigger the hint.
+  const allGhost = Boolean(
+    view &&
+      view.topics.length > 0 &&
+      view.topics.every((t) => t.publishers === 0),
+  );
+
   // Capture-selection checkboxes: pre-check recommended topics whose type
   // actually resolves on the robot (a recommended-but-unbuilt topic would
   // capture nothing). Initialized once from the first SETTLED scan — a
@@ -330,6 +343,30 @@ export function AgentTopicsPanel({
           {showingStale
             ? "showing the last complete scan."
             : "this list may be incomplete."}
+        </div>
+      ) : null}
+
+      {rosEnv ? (
+        <div className="text-[11px] text-muted">
+          agent env:{" "}
+          <span className="font-mono">
+            domain {rosEnv.domain_id ?? "?"}
+            {rosEnv.rmw ? ` · ${rosEnv.rmw}` : ""}
+            {rosEnv.distro ? ` · ${rosEnv.distro}` : ""}
+          </span>
+        </div>
+      ) : null}
+
+      {allGhost ? (
+        <div className="text-xs text-yellow-400 border border-yellow-400/30 rounded px-2 py-1.5">
+          The agent sees <b>no publishers on any topic</b> — your nodes may be
+          running in a different ROS environment. In the terminal running your
+          publishers, run{" "}
+          <span className="font-mono">printenv | grep -E '^(ROS_|RMW_)'</span>{" "}
+          and compare with the agent env above (a systemd agent runs with
+          defaults: domain 0, default RMW —{" "}
+          <span className="font-mono">sudo systemctl edit missiondebug-agent</span>{" "}
+          to match yours).
         </div>
       ) : null}
 

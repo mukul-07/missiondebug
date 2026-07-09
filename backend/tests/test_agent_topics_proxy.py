@@ -18,6 +18,7 @@ from missiondebug_backend.main import build_app
 
 _TOPICS_PAYLOAD = {
     "settled": True,
+    "ros_env": {"domain_id": "0", "rmw": "rmw_fastrtps_cpp", "distro": "humble"},
     "topics": [
         {
             "name": "/cmd_vel",
@@ -102,9 +103,21 @@ def test_topics_proxied_through_hub(tmp_path):
         assert j["agent_version"] == "0.7.4"
         assert j["settled"] is True
         assert j["topics"] == _TOPICS_PAYLOAD["topics"]
+        # Agent's effective ROS env passes through for the isolation hint.
+        assert j["ros_env"] == _TOPICS_PAYLOAD["ros_env"]
         # No sessions for this robot yet -> no last-capture cross-reference.
         assert j["last_capture_topics"] is None
         assert j["last_capture_session_id"] is None
+
+
+def test_topics_ros_env_absent_on_older_agents(tmp_path):
+    old_payload = {k: v for k, v in _TOPICS_PAYLOAD.items() if k != "ros_env"}
+    with _running_fake_agent(body=json.dumps(old_payload).encode()) as base:
+        c = _client(tmp_path)
+        _register(c, "r1", base)
+        r = c.get("/api/v1/agents/r1/topics")
+        assert r.status_code == 200
+        assert r.json()["ros_env"] is None
 
 
 def test_topics_enriched_with_last_capture(tmp_path):
