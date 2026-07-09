@@ -174,6 +174,19 @@ jobs:
           curl -fsS http://127.0.0.1:8000/api/admin/license
           kill "$BACKEND_PID"
 
+          # Regression: reinstall with /etc/missiondebug wiped (admin
+          # `rm -rf`). dpkg preserves conffile deletions across upgrades,
+          # so postinst must never depend on anything under /etc existing —
+          # 0.8.0 crashed here (`install: cannot stat backend.env.default`),
+          # and the natural workaround (an empty backend.env) silently
+          # disabled the web UI. The template now ships in /usr/share and
+          # postinst rebuilds /etc from it.
+          test -f /usr/share/missiondebug/backend.env.default
+          rm -rf /etc/missiondebug
+          dpkg -i dist/missiondebug-backend_*.deb
+          test -f /etc/missiondebug/backend.env
+          grep -q '^MD_WEB_DIR=' /etc/missiondebug/backend.env
+
       # The agent deb depends on ROS 2 packages this container doesn't
       # have, so extract instead of install and import the entry module
       # from the bundled venv — everything except rclpy itself.
@@ -183,6 +196,14 @@ jobs:
           /tmp/agent-root/opt/missiondebug/venv/bin/python -c \
             "import missiondebug_agent.main; import missiondebug_agent.detectors.from_config"
           test -x /tmp/agent-root/opt/missiondebug/bin/missiondebug-agent
+          # Config template must ship in /usr/share (dpkg always restores
+          # it), and the deb must declare no conffiles — see the backend
+          # smoke's regression note.
+          test -f /tmp/agent-root/usr/share/missiondebug/config.yaml.default
+          if dpkg-deb -I dist/missiondebug-agent_*.deb conffiles >/dev/null 2>&1; then
+            echo "agent deb must not declare conffiles" >&2
+            exit 1
+          fi
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

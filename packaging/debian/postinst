@@ -22,9 +22,24 @@ case "$1" in
         install -d -m 0755 -o "$USER_NAME" -g "$USER_NAME" "$SESSIONS_DIR"
 
         # Config dir + default config (don't overwrite an admin-edited one).
+        # The template ships in /usr/share (dpkg always restores it there);
+        # NEVER assume a file under /etc exists — dpkg preserves admin
+        # deletions of conffiles across upgrades, which crashed this script
+        # when /etc/missiondebug had been wiped (`install: cannot stat`).
         install -d -m 0755 "$CONF_DIR"
+        TEMPLATE=/usr/share/missiondebug/config.yaml.default
         if [ ! -f "$CONF_DIR/config.yaml" ]; then
-            install -m 0644 "$CONF_DIR/config.yaml.default" "$CONF_DIR/config.yaml"
+            if [ -f "$TEMPLATE" ]; then
+                install -m 0644 "$TEMPLATE" "$CONF_DIR/config.yaml"
+            elif [ -f "$CONF_DIR/config.yaml.default" ]; then
+                # location used by packages <= 0.8.0
+                install -m 0644 "$CONF_DIR/config.yaml.default" "$CONF_DIR/config.yaml"
+            else
+                echo "missiondebug-agent postinst: no config template found;" >&2
+                echo "  create $CONF_DIR/config.yaml (run 'missiondebug-agent init'" >&2
+                echo "  or copy config.example.yaml from the repo), then" >&2
+                echo "  'sudo systemctl restart missiondebug-agent'." >&2
+            fi
         fi
 
         # systemd: reload, enable, start. Tolerate envs without systemd

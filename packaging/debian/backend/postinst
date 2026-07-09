@@ -22,8 +22,34 @@ case "$1" in
         install -d -m 0755 "$CONF_DIR"
 
         # Drop default env file only on first install (don't clobber edits).
+        # Template ships in /usr/share (dpkg always restores it); never
+        # assume anything under /etc exists — an admin `rm -rf
+        # /etc/missiondebug` is preserved across upgrades for conffiles and
+        # crashed this script. Last resort: write the defaults inline, so a
+        # missing template can never leave the backend env-less (an empty
+        # backend.env silently disables the web UI via unset MD_WEB_DIR).
+        TEMPLATE=/usr/share/missiondebug/backend.env.default
         if [ ! -f "$CONF_DIR/backend.env" ]; then
-            install -m 0644 "$CONF_DIR/backend.env.default" "$CONF_DIR/backend.env"
+            if [ -f "$TEMPLATE" ]; then
+                install -m 0644 "$TEMPLATE" "$CONF_DIR/backend.env"
+            elif [ -f "$CONF_DIR/backend.env.default" ]; then
+                # location used by packages <= 0.8.0
+                install -m 0644 "$CONF_DIR/backend.env.default" "$CONF_DIR/backend.env"
+            else
+                cat > "$CONF_DIR/backend.env" <<'ENVEOF'
+# MissionDebug backend environment overrides.
+# Edit this file then `sudo systemctl restart missiondebug-backend`.
+
+# Cap total MCAP bytes on disk (0 = unlimited; oldest sessions deleted
+# when over). Default conservative for robots with small SSDs.
+MD_MAX_DISK_MB=2048
+
+# Path to the built web UI. Set automatically by the missiondebug-web .deb;
+# leave empty (or unset) for headless backend installs.
+MD_WEB_DIR=/var/lib/missiondebug/web
+ENVEOF
+                chmod 0644 "$CONF_DIR/backend.env"
+            fi
         fi
 
         if [ -d /run/systemd/system ]; then

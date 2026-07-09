@@ -95,7 +95,7 @@ build_agent() {
     echo "[agent] python: $PY ($($PY --version)) arch=$ARCH_NATIVE version=$VERSION"
 
     rm -rf "$STAGE"
-    mkdir -p "$PREFIX/bin" "$STAGE/etc/missiondebug" \
+    mkdir -p "$PREFIX/bin" "$STAGE/usr/share/missiondebug" \
              "$STAGE/lib/systemd/system" "$STAGE/DEBIAN"
 
     "$PY" -m venv --system-site-packages "$PREFIX/venv"
@@ -125,7 +125,12 @@ build_agent() {
     fi
 
     install -m 0755 "$PKG/missiondebug-agent" "$PREFIX/bin/missiondebug-agent"
-    install -m 0644 "$PKG/default-config.yaml" "$STAGE/etc/missiondebug/config.yaml.default"
+    # Template lives under /usr/share (NOT /etc, NOT a conffile): dpkg always
+    # restores /usr/share files on upgrade/reinstall, whereas a conffile the
+    # admin deleted (e.g. `rm -rf /etc/missiondebug`) stays deleted forever —
+    # which made postinst's copy-from-template crash on upgrade.
+    install -m 0644 "$PKG/default-config.yaml" \
+        "$STAGE/usr/share/missiondebug/config.yaml.default"
     install -m 0644 "$PKG/missiondebug-agent.service" \
         "$STAGE/lib/systemd/system/missiondebug-agent.service"
 
@@ -133,10 +138,6 @@ build_agent() {
     install -m 0755 "$PKG/debian/postinst" "$STAGE/DEBIAN/postinst"
     install -m 0755 "$PKG/debian/prerm"    "$STAGE/DEBIAN/prerm"
     install -m 0755 "$PKG/debian/postrm"   "$STAGE/DEBIAN/postrm"
-
-    cat > "$STAGE/DEBIAN/conffiles" <<EOF
-/etc/missiondebug/config.yaml.default
-EOF
 
     local OUT="$DIST/missiondebug-agent_${VERSION}_${SUFFIX}${ARCH_NATIVE}.deb"
     fakeroot dpkg-deb --build --root-owner-group "$STAGE" "$OUT"
@@ -161,7 +162,7 @@ build_backend() {
     echo "[backend] python: $PY ($($PY --version)) arch=$ARCH_NATIVE version=$VERSION"
 
     rm -rf "$STAGE"
-    mkdir -p "$PREFIX" "$STAGE/etc/missiondebug" \
+    mkdir -p "$PREFIX" "$STAGE/usr/share/missiondebug" \
              "$STAGE/lib/systemd/system" "$STAGE/DEBIAN"
 
     # Separate venv from the agent's so they upgrade independently.
@@ -177,8 +178,9 @@ build_backend() {
 
     relocate_venv_shebangs "$PREFIX/backend-venv" "/opt/missiondebug/backend-venv"
 
+    # Template under /usr/share, not a conffile — see the agent build's note.
     install -m 0644 "$PKG/default-backend.env" \
-        "$STAGE/etc/missiondebug/backend.env.default"
+        "$STAGE/usr/share/missiondebug/backend.env.default"
     install -m 0644 "$PKG/missiondebug-backend.service" \
         "$STAGE/lib/systemd/system/missiondebug-backend.service"
 
@@ -186,10 +188,6 @@ build_backend() {
     install -m 0755 "$PKG/debian/backend/postinst" "$STAGE/DEBIAN/postinst"
     install -m 0755 "$PKG/debian/backend/prerm"    "$STAGE/DEBIAN/prerm"
     install -m 0755 "$PKG/debian/backend/postrm"   "$STAGE/DEBIAN/postrm"
-
-    cat > "$STAGE/DEBIAN/conffiles" <<EOF
-/etc/missiondebug/backend.env.default
-EOF
 
     local OUT="$DIST/missiondebug-backend_${VERSION}_${SUFFIX}${ARCH_NATIVE}.deb"
     fakeroot dpkg-deb --build --root-owner-group "$STAGE" "$OUT"
