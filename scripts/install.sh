@@ -115,8 +115,16 @@ fi
 
 log "installing packages"
 run apt-get update -qq
+# A failed install must NOT abort the script here: the wiring step below
+# still applies to whatever did land (e.g. the agent installed but the
+# backend's configure failed). A silent abort left users with a running,
+# unwired agent and an empty dashboard pointing at nothing.
+APT_OK=1
 # shellcheck disable=SC2086  # PKGS is intentionally word-split
-run apt-get install -y $PKGS
+run apt-get install -y $PKGS || APT_OK=0
+if [ "$APT_OK" = 0 ]; then
+  warn "package installation failed — continuing, so anything already installed still gets wired"
+fi
 
 # ---- optional hub wiring ---------------------------------------------------
 
@@ -162,6 +170,15 @@ if [ -n "$HUB_URL" ]; then
 fi
 
 # ---- done ------------------------------------------------------------------
+
+if [ "$APT_OK" = 0 ]; then
+  echo
+  warn "finished with ERRORS: package installation failed (see the apt output above)."
+  warn "anything that did install has still been configured and wired."
+  warn "fix the apt error (often: sudo dpkg --configure -a), then re-run this"
+  warn "installer — it is idempotent and will complete the remaining steps."
+  exit 1
+fi
 
 log "done."
 echo
