@@ -296,7 +296,16 @@ curl -X POST http://localhost:7000/sessions/save
 timeout 6 ros2 topic pub -r 10 /cmd_vel geometry_msgs/msg/Twist '{linear: {x: 0.5}}'
 ```
 
-### 7. Common gotchas
+### 7. What survives a power-off
+
+Turning the robot off (a shutdown, a crash, a battery swap) does not lose your captured incidents:
+
+- **Saved sessions survive.** Every capture is a complete `.mcap` file written to disk the moment it is saved (`/var/lib/missiondebug/sessions/`). Power-off does not touch them.
+- **Only the live buffer is lost.** The rolling last-60-seconds lives in RAM. Whatever it held that was not yet saved is gone; no saved session is affected. Shutting down is not an anomaly, so it does not trigger a capture.
+- **Everything restarts on boot.** The services are enabled at install, so the agent and dashboard come back on their own. The backend re-scans the sessions folder and every saved session reappears in the UI.
+- **On a fleet hub, incidents stay visible even while the robot is off.** The hub already holds each capture's summary and metadata, so the dashboard, similarity search, and resolutions keep working. Replay needs the robot online again (the recording bytes stay on the robot), so until then the session shows a "recording unavailable" note. With the optional S3 upload enabled, replay works even while the robot is off.
+
+### 8. Common gotchas
 
 - **Every topic shows "no publishers" while your nodes are running:** the agent runs as a systemd service with default ROS settings. If your own terminals set a different `ROS_DOMAIN_ID` or `RMW_IMPLEMENTATION`, the agent and your nodes cannot see each other on the network, so the agent sees no publishers. The topics panel on the Agents page shows the agent's own ROS settings (look for the "agent env" line). In the terminal running your nodes, run `printenv | grep -E '^(ROS_|RMW_)'` and compare. To fix it, either clear those variables in your terminal, or set the same values on the service:
   ```bash
