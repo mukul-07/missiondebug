@@ -105,6 +105,16 @@ def _env_int(name: str, default: int = 0) -> int:
         return default
 
 
+def _env_list(name: str, default: list[str]) -> list[str]:
+    """Read a comma-separated list from the environment; unset OR
+    empty/whitespace means the default (same `"${VAR:-}"` robustness as
+    _env_int). Items are stripped; empties from stray commas dropped."""
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    return [item.strip() for item in raw.split(",") if item.strip()]
+
+
 def build_app(
     sessions_dir: Path,
     db_path: Path,
@@ -258,12 +268,17 @@ def build_app(
         ],
         lifespan=lifespan,
     )
+    # Cross-origin callers (the Vite dev server by default). Operators add
+    # their own origins via MD_CORS_ORIGINS (comma-separated) — e.g. the
+    # Foxglove app so the MissionDebug panel extension can call this API,
+    # or a reverse-proxied frontend domain. Auth (below) is the actual
+    # access control; CORS only governs which browser origins may ask.
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[
-            "http://localhost:5173",
-            "http://127.0.0.1:5173",
-        ],
+        allow_origins=_env_list(
+            "MD_CORS_ORIGINS",
+            ["http://localhost:5173", "http://127.0.0.1:5173"],
+        ),
         allow_credentials=False,
         allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["*"],

@@ -7,6 +7,7 @@ new MCAP file. Adds GET /healthz for liveness.
 from __future__ import annotations
 
 import logging
+import os
 import threading
 import time
 from datetime import datetime, timezone
@@ -273,6 +274,27 @@ def build_app(
             {"name": "system", "description": "Liveness + buffer status."},
         ],
     )
+
+    # Cross-origin browser callers, opt-in only (MD_CORS_ORIGINS,
+    # comma-separated). Default is NO cross-origin access — this API is
+    # loopback-first and unauthenticated. The known use is the MissionDebug
+    # Foxglove panel calling POST /sessions/save from the Foxglove origin;
+    # non-browser clients (curl, the hub's proxy) are unaffected either way.
+    _cors = [
+        o.strip()
+        for o in os.environ.get("MD_CORS_ORIGINS", "").split(",")
+        if o.strip()
+    ]
+    if _cors:
+        from fastapi.middleware.cors import CORSMiddleware
+
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=_cors,
+            allow_credentials=False,
+            allow_methods=["GET", "POST", "OPTIONS"],
+            allow_headers=["*"],
+        )
 
     @app.get("/healthz", tags=["system"], summary="Liveness + current buffer size")
     def healthz():

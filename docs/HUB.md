@@ -109,6 +109,15 @@ Network notes:
   your terminal, or give the service the same values via
   `sudo systemctl edit missiondebug-agent`
   (`[Service]` + `Environment=ROS_DOMAIN_ID=...`).
+- **Calling the API from another web app** (the MissionDebug Foxglove
+  panel, or your own frontend on a different domain): browsers block
+  cross-origin requests unless the server allows that origin. Set
+  `MD_CORS_ORIGINS` (comma-separated) where the backend runs, e.g.
+  `MD_CORS_ORIGINS=https://app.foxglove.dev`, then restart. The same
+  variable works on the agent service for its `:7000` API (needed for
+  the panel's capture button); the agent default allows no cross-origin
+  callers at all. This only governs which browser origins may call —
+  auth stays the access control.
 
 ## 5. Verify it worked
 
