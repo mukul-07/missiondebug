@@ -268,23 +268,6 @@ def build_app(
         ],
         lifespan=lifespan,
     )
-    # Cross-origin callers (the Vite dev server by default). Operators add
-    # their own origins via MD_CORS_ORIGINS (comma-separated) — e.g. the
-    # Foxglove app so the MissionDebug panel extension can call this API,
-    # or a reverse-proxied frontend domain. Auth (below) is the actual
-    # access control; CORS only governs which browser origins may ask.
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=_env_list(
-            "MD_CORS_ORIGINS",
-            ["http://localhost:5173", "http://127.0.0.1:5173"],
-        ),
-        allow_credentials=False,
-        allow_methods=["GET", "POST", "OPTIONS"],
-        allow_headers=["*"],
-        expose_headers=["Content-Range", "Content-Length", "Accept-Ranges"],
-    )
-
     @app.middleware("http")
     async def auth_middleware(request: Request, call_next):
         """v2 P4 — gate every /api/* request on the configured credentials.
@@ -310,6 +293,27 @@ def build_app(
             content={"detail": "Authentication required"},
             headers={"WWW-Authenticate": 'Basic realm="MissionDebug"'},
         )
+
+    # Cross-origin callers (the Vite dev server by default). Operators add
+    # their own origins via MD_CORS_ORIGINS (comma-separated) — e.g. the
+    # Foxglove app so the MissionDebug panel extension can call this API,
+    # or a reverse-proxied frontend domain. Auth (above) is the actual
+    # access control; CORS only governs which browser origins may ask.
+    # Registered AFTER the auth middleware so CORS wraps OUTSIDE it
+    # (Starlette runs the last-added middleware first): auth's 401 must
+    # carry CORS headers, or a cross-origin caller can never see the 401
+    # and show its "token required" state — it just looks unreachable.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_env_list(
+            "MD_CORS_ORIGINS",
+            ["http://localhost:5173", "http://127.0.0.1:5173"],
+        ),
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["*"],
+        expose_headers=["Content-Range", "Content-Length", "Accept-Ranges"],
+    )
 
     def get_db() -> Db:
         return db

@@ -39,3 +39,24 @@ def test_empty_env_means_default(tmp_path, monkeypatch):
     with TestClient(_app(tmp_path)) as c:
         r = c.get("/api/sessions", headers={"Origin": "http://localhost:5173"})
         assert r.headers.get("access-control-allow-origin") == "http://localhost:5173"
+
+
+def test_auth_401_carries_cors_headers(tmp_path, monkeypatch):
+    """CORS must wrap OUTSIDE the auth middleware: an auth-enabled hub's
+    401 needs the allow-origin header, or a cross-origin caller (the
+    Foxglove panel) can never see the status and show its token prompt —
+    the hub just looks unreachable. Regression for the middleware-order
+    bug the Phase 3 matrix caught."""
+    monkeypatch.setenv("MD_MODE", "fleet")
+    monkeypatch.setenv("MD_HUB_AUTH_PASSWORD", "test123")
+    monkeypatch.setenv("MD_CORS_ORIGINS", FOXGLOVE)
+    with TestClient(_app(tmp_path)) as c:
+        r = c.get("/api/sessions", headers={"Origin": FOXGLOVE})
+        assert r.status_code == 401
+        assert r.headers.get("access-control-allow-origin") == FOXGLOVE
+        # and the token still unlocks it
+        r = c.get(
+            "/api/sessions",
+            headers={"Origin": FOXGLOVE, "Authorization": "Bearer test123"},
+        )
+        assert r.status_code == 200
