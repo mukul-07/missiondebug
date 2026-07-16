@@ -21,8 +21,10 @@ export function FoxgloveButton({ sessionId }: Props) {
 
   // The hub's mcap endpoint is relative; Foxglove needs an absolute
   // URL it can fetch from the user's browser. Reconstruct from the
-  // current page origin.
-  const mcapUrl = `${window.location.origin}/api/sessions/${encodeURIComponent(sessionId)}/mcap`;
+  // current page origin. Must be the .mcap-SUFFIXED path: Foxglove
+  // infers the format from the URL's file extension and rejects the
+  // bare /mcap path with "Unsupported extension".
+  const mcapUrl = `${window.location.origin}/api/sessions/${encodeURIComponent(sessionId)}/recording.mcap`;
   const studioUrl = `https://app.foxglove.dev/?ds=remote-file&ds.url=${encodeURIComponent(mcapUrl)}`;
 
   return (

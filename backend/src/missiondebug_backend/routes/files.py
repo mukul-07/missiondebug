@@ -40,6 +40,11 @@ def get_router(get_db) -> APIRouter:
     router = APIRouter(prefix="/api/sessions", tags=["files"])
 
     @router.api_route(
+        "/{session_id}/recording.mcap",
+        methods=["GET", "HEAD"],
+        summary="Stream the session's MCAP file, .mcap-suffixed URL",
+    )
+    @router.api_route(
         "/{session_id}/mcap",
         methods=["GET", "HEAD"],
         summary="Stream the session's MCAP file (supports Range)",
@@ -51,6 +56,14 @@ def get_router(get_db) -> APIRouter:
         When the session has an HTTP `mcap_url` (hub-ingested, v2 fleet)
         the request is proxied to that URL — bytes are streamed through,
         not buffered on the hub.
+
+        Served at TWO paths: `/mcap` (the original, used by the hub's own
+        replay worker) and `/recording.mcap`. The alias exists because
+        Foxglove's remote-file data source infers the format from the URL
+        path's file extension — a URL ending in `/mcap` has none, and
+        Foxglove rejects it with "Unsupported extension". Deep links (the
+        hub UI's Open-in-Foxglove button, the Foxglove panel's Open here)
+        must use the `.mcap`-suffixed path.
         """
         row = db.get_session(session_id)
         if row is None:

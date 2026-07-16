@@ -170,3 +170,18 @@ def test_head_is_supported(tmp_path):
     assert r.status_code == 200
     # Body must be empty on HEAD.
     assert r.content == b""
+
+
+def test_recording_mcap_alias_serves_same_bytes(tmp_path):
+    """The .mcap-suffixed alias exists for Foxglove deep links: Foxglove
+    infers the format from the URL's file extension and rejects the bare
+    /mcap path with "Unsupported extension". Same handler, same bytes,
+    Range included."""
+    with _running_fake_agent() as base:
+        c = _client_with_hub_session(tmp_path, f"{base}/api/sessions/hub-1/mcap")
+        r = c.get("/api/sessions/hub-1/recording.mcap")
+        assert r.status_code == 200
+        assert r.content == _FAKE_MCAP
+        r = c.get("/api/sessions/hub-1/recording.mcap", headers={"Range": "bytes=0-99"})
+        assert r.status_code == 206
+        assert r.content == _FAKE_MCAP[:100]
