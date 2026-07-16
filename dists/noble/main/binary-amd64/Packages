@@ -1,26 +1,4 @@
 Package: missiondebug-agent
-Version: 0.7.10
-Architecture: amd64
-Maintainer: MissionDebug <noreply@missiondebug.local>
-Depends: python3.12, python3.12-venv, ros-humble-ros-base | ros-jazzy-ros-base, ros-humble-tf2-msgs | ros-jazzy-tf2-msgs, ros-humble-geometry-msgs | ros-jazzy-geometry-msgs, ros-humble-nav-msgs | ros-jazzy-nav-msgs, ros-humble-sensor-msgs | ros-jazzy-sensor-msgs, adduser
-Filename: pool/noble/missiondebug-agent_0.7.10_ubuntu24.04_amd64.deb
-Size: 13894868
-MD5sum: da5df5ef978d3fffc41a450543f689d4
-SHA1: cc05a2f1df270fd7376267c76fc17fa984b7718e
-SHA256: be88247b1f74f223f48c0883b3c61d3db2c5766d442e947a9ba8358e1f5c67cb
-Section: misc
-Priority: optional
-Description: MissionDebug ROS 2 agent
- Local-first debugger for ROS 2 robots. Subscribes to configured topics,
- keeps a 60-second rolling buffer in RAM, and saves an MCAP session on
- manual trigger or anomaly (stall, path deviation).
- .
- Pairs with the MissionDebug backend + web UI to replay captured sessions.
- Configuration: /etc/missiondebug/config.yaml
- Sessions: /var/lib/missiondebug/sessions/
- Control API: http://127.0.0.1:7000
-
-Package: missiondebug-agent
 Version: 0.8.0
 Architecture: amd64
 Maintainer: MissionDebug <noreply@missiondebug.local>
@@ -64,28 +42,27 @@ Description: MissionDebug ROS 2 agent
  Sessions: /var/lib/missiondebug/sessions/
  Control API: http://127.0.0.1:7000
 
-Package: missiondebug-backend
-Version: 0.7.10
+Package: missiondebug-agent
+Version: 0.8.2
 Architecture: amd64
 Maintainer: MissionDebug <noreply@missiondebug.local>
-Depends: python3.12, python3.12-venv, adduser
-Recommends: missiondebug-web
-Filename: pool/noble/missiondebug-backend_0.7.10_ubuntu24.04_amd64.deb
-Size: 18925790
-MD5sum: 4cec0b1b3d3dbd3cf1388a9b34626b80
-SHA1: ac78cbc32fab6cebe7ce47db4f473fb9d39f8366
-SHA256: ab706305f5aa0a79725b7f7c10251900cd4a606488ab09766b6554c46f9c0c16
+Depends: python3.12, python3.12-venv, ros-humble-ros-base | ros-jazzy-ros-base, ros-humble-tf2-msgs | ros-jazzy-tf2-msgs, ros-humble-geometry-msgs | ros-jazzy-geometry-msgs, ros-humble-nav-msgs | ros-jazzy-nav-msgs, ros-humble-sensor-msgs | ros-jazzy-sensor-msgs, adduser
+Filename: pool/noble/missiondebug-agent_0.8.2_ubuntu24.04_amd64.deb
+Size: 13901084
+MD5sum: 1ec6661efd465673ae07954b0b8f6ad4
+SHA1: 17683fc818a2482c3e1b62f262b09d996a7a69a2
+SHA256: 98ae81320be7f04ecffb1279398a35fbbfe9045fce68339dd854d247c17ef8a4
 Section: misc
 Priority: optional
-Description: MissionDebug backend API + session index
- FastAPI service that indexes captured MCAP sessions, serves them to the
- web UI, and exposes admin endpoints (rescan, disk usage, retention
- sweep). Pairs with missiondebug-agent (which captures sessions) and
- missiondebug-web (the React UI; backend serves it when installed).
+Description: MissionDebug ROS 2 agent
+ Local-first debugger for ROS 2 robots. Subscribes to configured topics,
+ keeps a 60-second rolling buffer in RAM, and saves an MCAP session on
+ manual trigger or anomaly (stall, path deviation).
  .
- Listens on 0.0.0.0:8000 by default.
- Config: /etc/missiondebug/backend.env
- Data: /var/lib/missiondebug/missiondebug.sqlite3
+ Pairs with the MissionDebug backend + web UI to replay captured sessions.
+ Configuration: /etc/missiondebug/config.yaml
+ Sessions: /var/lib/missiondebug/sessions/
+ Control API: http://127.0.0.1:7000
 
 Package: missiondebug-backend
 Version: 0.8.0
@@ -133,25 +110,28 @@ Description: MissionDebug backend API + session index
  Config: /etc/missiondebug/backend.env
  Data: /var/lib/missiondebug/missiondebug.sqlite3
 
-Package: missiondebug-web
-Version: 0.7.10
-Architecture: all
+Package: missiondebug-backend
+Version: 0.8.2
+Architecture: amd64
 Maintainer: MissionDebug <noreply@missiondebug.local>
-Depends: missiondebug-backend
-Filename: pool/noble/missiondebug-web_0.7.10_all.deb
-Size: 261132
-MD5sum: 5c507f77054cf0334939f7e7129682f8
-SHA1: 4be41c5984d3406fd356c04a9d6973ca1efdaa02
-SHA256: 95a46148b5fd686ee3e6ece6842b4b7cb94597418c83901280aba7d19eaec197
+Depends: python3.12, python3.12-venv, adduser
+Recommends: missiondebug-web
+Filename: pool/noble/missiondebug-backend_0.8.2_ubuntu24.04_amd64.deb
+Size: 18939862
+MD5sum: 7f72309e88a5d1fff2b86da2ed3f0269
+SHA1: 56ee66fe19f798e2b3ee34b4fd797bf10955c322
+SHA256: b8bf26a2938028ef4cc7ad810a304f9db7ad7ee44ada5f58ab97392e6a00505f
 Section: misc
 Priority: optional
-Description: MissionDebug web UI (static dist)
- Built React + PixiJS UI for replaying captured MCAP sessions. Installs
- the static dist to /var/lib/missiondebug/web/; the backend serves it
- from there at http://<host>:8000/.
+Description: MissionDebug backend API + session index
+ FastAPI service that indexes captured MCAP sessions, serves them to the
+ web UI, and exposes admin endpoints (rescan, disk usage, retention
+ sweep). Pairs with missiondebug-agent (which captures sessions) and
+ missiondebug-web (the React UI; backend serves it when installed).
  .
- No separate web service — the backend handles both /api and the static
- files on the same port.
+ Listens on 0.0.0.0:8000 by default.
+ Config: /etc/missiondebug/backend.env
+ Data: /var/lib/missiondebug/missiondebug.sqlite3
 
 Package: missiondebug-web
 Version: 0.8.0
@@ -183,6 +163,26 @@ Size: 266664
 MD5sum: 4a98a188c1e382d5daae8a770e511fb0
 SHA1: bc4e89a82ab8e293409afbe5dab9fd8fa347c0d0
 SHA256: f6ab38fe9bd9b69f390c2091b8c8a5c01d475449702d4d4d9266a03e96b907dc
+Section: misc
+Priority: optional
+Description: MissionDebug web UI (static dist)
+ Built React + PixiJS UI for replaying captured MCAP sessions. Installs
+ the static dist to /var/lib/missiondebug/web/; the backend serves it
+ from there at http://<host>:8000/.
+ .
+ No separate web service — the backend handles both /api and the static
+ files on the same port.
+
+Package: missiondebug-web
+Version: 0.8.2
+Architecture: all
+Maintainer: MissionDebug <noreply@missiondebug.local>
+Depends: missiondebug-backend
+Filename: pool/noble/missiondebug-web_0.8.2_all.deb
+Size: 266974
+MD5sum: 934c450e489a9cf6f3a6f7bb030181b9
+SHA1: 840704ab5005a7844f6c7f75e3575ae8ad60179e
+SHA256: bc5ea18e9867321ff7b78a0dd583aa43efb3a02ee2d63711eb9658a2a7da2780
 Section: misc
 Priority: optional
 Description: MissionDebug web UI (static dist)
