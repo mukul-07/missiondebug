@@ -41,6 +41,25 @@ def test_empty_env_means_default(tmp_path, monkeypatch):
         assert r.headers.get("access-control-allow-origin") == "http://localhost:5173"
 
 
+def test_preflight_allows_put(tmp_path, monkeypatch):
+    """Browsers preflight cross-origin PUT (OPTIONS + request-method). The
+    Foxglove panel's inline resolve PUTs the resolution endpoint, so PUT
+    must be in the CORS allow-methods — GET/POST alone 400s the preflight
+    and the panel write silently fails."""
+    monkeypatch.setenv("MD_CORS_ORIGINS", FOXGLOVE)
+    with TestClient(_app(tmp_path)) as c:
+        r = c.options(
+            "/api/v2/sessions/SES-1/resolution",
+            headers={
+                "Origin": FOXGLOVE,
+                "Access-Control-Request-Method": "PUT",
+                "Access-Control-Request-Headers": "content-type",
+            },
+        )
+        assert r.status_code == 200
+        assert "PUT" in r.headers.get("access-control-allow-methods", "")
+
+
 def test_auth_401_carries_cors_headers(tmp_path, monkeypatch):
     """CORS must wrap OUTSIDE the auth middleware: an auth-enabled hub's
     401 needs the allow-origin header, or a cross-origin caller (the

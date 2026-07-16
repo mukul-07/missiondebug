@@ -310,7 +310,9 @@ def build_app(
             ["http://localhost:5173", "http://127.0.0.1:5173"],
         ),
         allow_credentials=False,
-        allow_methods=["GET", "POST", "OPTIONS"],
+        # PUT is preflighted by browsers; the Foxglove panel's inline
+        # resolve writes PUT /api/v2/sessions/{id}/resolution cross-origin.
+        allow_methods=["GET", "POST", "PUT", "OPTIONS"],
         allow_headers=["*"],
         expose_headers=["Content-Range", "Content-Length", "Accept-Ranges"],
     )
