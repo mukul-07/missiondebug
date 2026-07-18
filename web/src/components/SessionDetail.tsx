@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { listAnnotations } from "../api/annotations";
-import { getSession, mcapUrl } from "../api/sessions";
+import { getResolution, getSession, mcapUrl } from "../api/sessions";
 import { copyText } from "../lib/clipboard";
 import { useMcapLoader } from "../hooks/useMcapLoader";
 import { usePlayback } from "../stores/playback";
@@ -18,7 +18,7 @@ import { FoxgloveButton } from "./FoxgloveButton";
 import { Button } from "./ui/Button";
 import { Card } from "./ui/Card";
 import { SimilarIncidents } from "./SimilarIncidents";
-import { ResolutionPanel } from "./ResolutionPanel";
+import { ResolutionBadge, ResolutionPanel } from "./ResolutionPanel";
 
 export function SessionDetail() {
   const { id } = useParams<{ id: string }>();
@@ -228,23 +228,16 @@ export function SessionDetail() {
         </span>
       </div>
 
-      <div className="grid md:grid-cols-2 gap-3">
-        {meta?.summary ? (
-          <Card className="bg-bg/50">
-            <div className="text-[10px] uppercase tracking-wide text-muted mb-1">
-              Summary
-            </div>
-            <div className="text-sm text-text leading-relaxed">{meta.summary}</div>
-          </Card>
-        ) : (
-          <div />
-        )}
-        {id ? (
-          <SimilarIncidents sessionId={id} hasSummary={!!meta?.summary} />
-        ) : null}
-      </div>
-
-      {id ? <ResolutionPanel sessionId={id} /> : null}
+      {/* Incident context — collapsed to one strip so replay leads the
+          page. Triage (summary / similar / resolution) is one click away;
+          when the recording is gone the context IS the page, so it opens. */}
+      {id ? (
+        <IncidentContextStrip
+          sessionId={id}
+          summary={meta?.summary ?? null}
+          defaultOpen={recordingUnavailable}
+        />
+      ) : null}
 
       {recordingUnavailable ? (
         <Card className="bg-bg/50">
@@ -276,28 +269,23 @@ export function SessionDetail() {
         </Card>
       ) : (
       <>
-      <div className="grid grid-cols-2 gap-3">
-        {videoTopics.length > 0 ? (
-          videoTopics.map((t) => (
+      {/* Only render tracks for kinds this session actually has — an
+          empty "No /tf data" line is noise on camera-only robots. */}
+      {videoTopics.length > 0 ? (
+        <div className="grid grid-cols-2 gap-3">
+          {videoTopics.map((t) => (
             <TrackVideo key={t} label={t} frames={loaded.videoByTopic.get(t) ?? []} />
-          ))
-        ) : (
-          <div className="col-span-2 text-muted text-sm">No video topics in this session.</div>
-        )}
-      </div>
-
-      <div className="grid grid-cols-3 gap-3">
-        {tfTopics.length > 0 ? (
-          tfTopics.slice(0, 1).map((t) => (
-            <TrackPose key={t} msgs={loaded.tfByTopic.get(t) ?? []} />
-          ))
-        ) : (
-          <div className="text-muted text-sm">No /tf data.</div>
-        )}
-        <div className="col-span-2 text-xs text-muted self-center">
-          Space: play/pause · ←/→: step 100ms · Shift+←/→: step 1s
+          ))}
         </div>
-      </div>
+      ) : null}
+
+      {tfTopics.length > 0 ? (
+        <div className="grid grid-cols-3 gap-3">
+          {tfTopics.slice(0, 1).map((t) => (
+            <TrackPose key={t} msgs={loaded.tfByTopic.get(t) ?? []} />
+          ))}
+        </div>
+      ) : null}
 
       <Timeline durationNs={durationNs} twist={primaryTwist} annotations={timelineAnnotations} />
 
@@ -341,10 +329,15 @@ export function SessionDetail() {
         />
       ) : null}
 
-      <div className="flex items-center gap-2 flex-wrap">
+      {/* Transport — sticky at the viewport bottom so play/scrub stays
+          reachable while scrolling charts and the inspector. */}
+      <div className="sticky bottom-0 z-20 -mx-4 px-4 py-2 bg-panel/95 backdrop-blur border-t border-border flex items-center gap-2 flex-wrap">
         <Button onClick={toggle}>{isPlaying ? "Pause" : "Play"}</Button>
         <span className="text-xs text-muted font-mono">
           {(Number(currentTimeNs) / 1e9).toFixed(2)} / {(Number(durationNs) / 1e9).toFixed(2)} s
+        </span>
+        <span className="text-xs text-muted hidden lg:inline ml-2">
+          Space: play/pause · ←/→: step 100ms · Shift+←/→: step 1s
         </span>
         {primaryTwistTopic && twistTopics.length > 1 ? (
           <label className="text-xs text-muted flex items-center gap-1 ml-2">
@@ -386,6 +379,71 @@ export function SessionDetail() {
       ) : null}
 
       {id ? <AnnotationsPanel sessionId={id} /> : null}
+    </div>
+  );
+}
+
+type IncidentContextStripProps = {
+  sessionId: string;
+  summary: string | null;
+  defaultOpen: boolean;
+};
+
+/**
+ * Compact incident-context header: resolution status pill + summary
+ * excerpt on one line, expanding to the full Summary / Similar /
+ * Resolution panels. Keeps triage one click away without pushing the
+ * replay below the fold.
+ */
+function IncidentContextStrip({ sessionId, summary, defaultOpen }: IncidentContextStripProps) {
+  const [open, setOpen] = useState(defaultOpen);
+  // Same query key as ResolutionPanel so expanding the strip reuses the
+  // cached fetch instead of firing a second one.
+  const { data: resolution } = useQuery({
+    queryKey: ["resolution", sessionId],
+    queryFn: () => getResolution(sessionId),
+    enabled: !!sessionId,
+  });
+
+  return (
+    <div className="bg-panel border border-border rounded">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-bg/40"
+      >
+        <span className="text-muted w-3 shrink-0">{open ? "▾" : "▸"}</span>
+        <span className="text-[10px] uppercase tracking-wide text-muted shrink-0">
+          Incident
+        </span>
+        {resolution ? <ResolutionBadge status={resolution.status} /> : null}
+        <span className="text-xs text-muted truncate flex-1 min-w-0">
+          {summary ??
+            "No structured summary — captured before v2 P3.5.1, similarity search unavailable."}
+        </span>
+        <span className="text-xs text-muted shrink-0">
+          {open ? "hide details" : "details"}
+        </span>
+      </button>
+      {open ? (
+        <div className="px-3 pb-3 grid gap-3">
+          <div className="grid md:grid-cols-2 gap-3">
+            {summary ? (
+              <Card className="bg-bg/50">
+                <div className="text-[10px] uppercase tracking-wide text-muted mb-1">
+                  Summary
+                </div>
+                <div className="text-sm text-text leading-relaxed">{summary}</div>
+              </Card>
+            ) : (
+              <div />
+            )}
+            <SimilarIncidents sessionId={sessionId} hasSummary={!!summary} />
+          </div>
+          <ResolutionPanel sessionId={sessionId} />
+        </div>
+      ) : null}
     </div>
   );
 }

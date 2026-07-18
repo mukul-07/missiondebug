@@ -63,7 +63,7 @@ export function TrackJsonInspector({ tracks }: Props) {
       {current === null ? (
         <div className="text-xs text-muted">No message at this time.</div>
       ) : (
-        <div className="font-mono text-xs">
+        <div className="font-mono text-xs max-h-80 overflow-y-auto pr-1">
           <div className="text-muted mb-1">
             t = {(Number(current.timeNs - startNs) / 1e9).toFixed(3)}s
           </div>
@@ -81,7 +81,12 @@ interface TreeNodeProps {
 }
 
 function TreeNode({ value, depth, keyName }: TreeNodeProps) {
-  const [collapsed, setCollapsed] = useState(depth >= 2);
+  // Long primitive arrays (covariance matrices, byte blobs) start
+  // collapsed regardless of depth — 27 rows of zeros is what used to
+  // make this panel eat screens of vertical space.
+  const arr = Array.isArray(value) ? (value as unknown[]) : null;
+  const longArray = !!arr && arr.length > 8;
+  const [collapsed, setCollapsed] = useState(depth >= 2 || longArray);
 
   if (value === null || value === undefined) {
     return <LeafRow keyName={keyName} display="null" muted />;
@@ -111,6 +116,21 @@ function TreeNode({ value, depth, keyName }: TreeNodeProps) {
   const opener = Array.isArray(value) ? "[" : "{";
   const closer = Array.isArray(value) ? "]" : "}";
 
+  // Compact display for collapsed primitive arrays: "[0 × 9]" when
+  // uniform, "[9 values]" otherwise.
+  let collapsedLabel = entries.length > 0 ? `${entries.length}…` : "";
+  if (arr && arr.length > 0) {
+    const primitive = arr.every((v) =>
+      ["number", "bigint", "boolean", "string"].includes(typeof v),
+    );
+    if (primitive) {
+      const first = arr[0];
+      collapsedLabel = arr.every((v) => v === first)
+        ? `${String(first)} × ${arr.length}`
+        : `${arr.length} values`;
+    }
+  }
+
   return (
     <div className="grid gap-0.5">
       <div
@@ -128,7 +148,7 @@ function TreeNode({ value, depth, keyName }: TreeNodeProps) {
         {isEmpty || collapsed ? (
           <span className="text-muted">
             {opener}
-            {entries.length > 0 ? `${entries.length}…` : ""}
+            {collapsedLabel}
             {closer}
           </span>
         ) : (
