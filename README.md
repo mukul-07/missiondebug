@@ -67,7 +67,7 @@ Most ROS debugging tools assume you knew to start recording. MissionDebug always
 
 > Sessions auto-save when a detector fires; the label tells you why. Click one to scrub the timeline.
 
-![Session detail: synchronized camera replay, pose, timeline with playhead, and a message inspector](docs/screenshot-detail.png)
+![Session detail: a real construction-robot capture — synchronized camera and depth replay, timeline with playhead, odometry charts, and a message inspector](docs/screenshot-detail.png)
 
 ---
 

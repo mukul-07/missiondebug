@@ -154,7 +154,7 @@ happens, and the hub's dashboard shows your fleet's incidents in one
 place. Open any capture to scrub its timeline, including the camera
 frames captured around the incident:
 
-![A captured session in the hub: synchronized camera feeds, pose track, timeline scrubber, and a message inspector at the playhead](screenshot-detail.png)
+![A captured session in the hub: a real construction-robot capture with synchronized camera and depth feeds, timeline scrubber, odometry charts, and a message inspector at the playhead](screenshot-detail.png)
 
 ## Which view should I use?
 
