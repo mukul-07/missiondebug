@@ -118,7 +118,7 @@ curl 'http://<robot>:8000/api/sessions?limit=10'
 curl 'http://<robot>:8000/api/sessions?robot_id=my-robot'
 
 # Get one session
-curl http://<robot>:8000/api/sessions/sample_drive
+curl http://<robot>:8000/api/sessions/construction_indoor_60s
 ```
 
 **Fleet-readiness.** Each session carries a `robot_id` (set in the agent's
@@ -136,10 +136,10 @@ operators see the actual count without any extra configuration.
 
 ```bash
 # Download the full MCAP
-curl -o session.mcap http://<robot>:8000/api/sessions/sample_drive/mcap
+curl -o session.mcap http://<robot>:8000/api/sessions/construction_indoor_60s/mcap
 
 # Fetch a specific byte range (used by the browser scrubber)
-curl -H 'Range: bytes=0-65535' http://<robot>:8000/api/sessions/sample_drive/mcap
+curl -H 'Range: bytes=0-65535' http://<robot>:8000/api/sessions/construction_indoor_60s/mcap
 ```
 
 ### Annotations
@@ -153,12 +153,12 @@ curl -H 'Range: bytes=0-65535' http://<robot>:8000/api/sessions/sample_drive/mca
 
 ```bash
 # Add an annotation at t=23.4s
-curl -X POST http://<robot>:8000/api/sessions/sample_drive/annotations \
+curl -X POST http://<robot>:8000/api/sessions/construction_indoor_60s/annotations \
   -H 'Content-Type: application/json' \
   -d '{"time_ns": 23400000000, "body": "Lidar drops out here"}'
 
 # List them
-curl http://<robot>:8000/api/sessions/sample_drive/annotations
+curl http://<robot>:8000/api/sessions/construction_indoor_60s/annotations
 ```
 
 ### Agents (fleet)

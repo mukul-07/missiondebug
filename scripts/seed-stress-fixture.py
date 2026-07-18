@@ -35,7 +35,7 @@ OUT_PATH = Path(__file__).resolve().parent.parent / "fixtures" / "warehouse_robo
 
 ROBOT_ID = "stress-robot-01"
 SESSION_DURATION_S = 30.0
-START_WALL_NS = 1_700_000_000_000_000_000  # matches sample_drive vintage
+START_WALL_NS = 1_700_000_000_000_000_000  # fixed epoch so re-runs are deterministic
 
 
 # ---- CDR encoding helpers --------------------------------------------

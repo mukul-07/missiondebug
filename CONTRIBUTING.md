@@ -43,8 +43,9 @@ source /opt/ros/humble/setup.bash    # or jazzy
 MD_FIXTURES=1 make dev               # tmux session with all three services
 ```
 
-The fixture mode seeds the backend with `fixtures/sample_drive.mcap` so
-the UI has something to render even without a connected robot.
+The fixture mode seeds the backend with the sessions in `fixtures/`
+(a real construction-robot capture and a synthetic 30-topic warehouse
+robot) so the UI has something to render even without a connected robot.
 
 ## Submitting changes
 

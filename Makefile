@@ -1,4 +1,4 @@
-.PHONY: dev test fmt lint install clean-web package package-agent package-backend package-web fixture
+.PHONY: dev test fmt lint install clean-web package package-agent package-backend package-web
 
 install: clean-web
 	cd agent && uv sync || pip install -e ".[dev]"
@@ -49,8 +49,3 @@ package-backend:
 
 package-web:
 	bash packaging/build-deb.sh web
-
-# Generate fixtures/sample_drive.mcap. Requires ROS 2 sourced.
-# Run once, commit the result; fresh clones reuse it.
-fixture:
-	cd agent && .venv/bin/python ../scripts/seed-fixture.py

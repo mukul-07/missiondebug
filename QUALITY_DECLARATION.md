@@ -58,9 +58,11 @@ re-assess against Level 3 criteria.
   decoupled from rclpy so it can be tested without a ROS install.
   rclpy-coupled code lives in `agent/src/missiondebug_agent/main.py`
   and `ros_bridge.py` and is exercised by end-to-end demos.
-- **Fixtures:** `fixtures/sample_drive.mcap` is a recorded 30-second
-  synthetic drive that exercises rule firing in the backend's index
-  + replay path. `MD_FIXTURES=1 make dev` seeds the backend with it.
+- **Fixtures:** `fixtures/construction_indoor_60s.mcap` is a 60-second
+  cut of a real construction-robot recording (camera, depth, odometry,
+  IMU); `fixtures/warehouse_robot_30_topics.mcap` is a synthetic
+  30-topic stress fixture. Both exercise the backend's index + replay
+  path; `MD_FIXTURES=1 make dev` seeds the backend with them.
 
 ### 5. Dependencies
 
