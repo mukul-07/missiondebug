@@ -76,9 +76,15 @@ export function Timeline({ durationNs, twist, annotations = [] }: Props) {
       stage.addChild(chart);
       stage.addChild(playhead);
 
+      // Width in CSS pixels, measured from the container. Pixi v8's
+      // renderer.width is already logical px, so dividing it by
+      // resolution again halved every drawing on Retina (dpr=2)
+      // displays — and skewed click-to-seek the same way.
+      const cssWidth = () => el.clientWidth;
+
       const drawAxisAndChart = () => {
         if (!app) return;
-        const w = app.renderer.width / app.renderer.resolution;
+        const w = cssWidth();
         const h = HEIGHT;
         const { durationNs: d, twist: tw } = stateRef.current;
         if (d <= 0n) {
@@ -177,7 +183,7 @@ export function Timeline({ durationNs, twist, annotations = [] }: Props) {
       const drawPlayhead = () => {
         if (!app) return;
         playhead.clear();
-        const w = app.renderer.width / app.renderer.resolution;
+        const w = cssWidth();
         const usableW = Math.max(1, w - 2 * PADDING);
         const { currentTimeNs, durationNs: d } = usePlayback.getState();
         if (d <= 0n) return;
@@ -199,7 +205,7 @@ export function Timeline({ durationNs, twist, annotations = [] }: Props) {
       let dragging = false;
       const seekFromX = (px: number) => {
         if (!app) return;
-        const w = app.renderer.width / app.renderer.resolution;
+        const w = cssWidth();
         const usableW = Math.max(1, w - 2 * PADDING);
         const frac = Math.max(0, Math.min(1, (px - PADDING) / usableW));
         const { durationNs: d, setTime } = usePlayback.getState();
