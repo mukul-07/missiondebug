@@ -10,7 +10,7 @@
 
 > **Incident memory for your ROS 2 robot fleet.** Capture the 60 seconds around every failure, replay it like a black box in Foxglove, and query your whole fleet's incident history so your team stops re-solving the same problem.
 
-[![MissionDebug in motion — the fleet dashboard, a real construction-robot capture replayed with camera + depth, and "has this happened before?" answered with past root causes. Click for the full tour.](https://raw.githubusercontent.com/mukul-07/missiondebug-demos/main/docs/demo-preview.gif)](https://github.com/mukul-07/missiondebug-demos/blob/main/docs/demo.mp4)
+[![MissionDebug in motion: the fleet dashboard, a real construction-robot capture replayed with camera + depth, and "has this happened before?" answered with past root causes. Click for the full tour.](https://raw.githubusercontent.com/mukul-07/missiondebug-demos/main/docs/demo-preview.gif)](https://github.com/mukul-07/missiondebug-demos/blob/main/docs/demo.mp4)
 
 The deepest fleet-ops pain isn't "I can't find what broke." It's *"we keep re-solving the same incident because nobody remembers it broke this way before."* MissionDebug fixes that. Every capture gets a structured summary; the fleet **incident dashboard** rolls up recurrence rate, MTTR, and top failure patterns; and opening any incident answers **"has this happened before?"**, surfacing similar past incidents *with how they were resolved*.
 
@@ -20,7 +20,7 @@ And you can **ask the whole history in plain English** (*"why does warehouse-bot
 
 ![Ask AI: a plain-English question over the incident history, answered with the sessions it used as clickable citations](docs/screenshot-ask.png)
 
-Most ROS debugging tools assume you knew to start recording. MissionDebug always has the last 60 seconds of your robot in RAM and snapshots it when things go wrong — manually, or automatically when a detector fires. The agent runs entirely on the robot; nothing leaves the machine unless you copy it off, which is why it fits defense, hospital, industrial, and other environments where cloud-first observability isn't an option.
+Most ROS debugging tools assume you knew to start recording. MissionDebug always has the last 60 seconds of your robot in RAM and snapshots it when things go wrong, manually or automatically when a detector fires. The agent runs entirely on the robot; nothing leaves the machine unless you copy it off, which is why it fits defense, hospital, industrial, and other environments where cloud-first observability isn't an option.
 
 Under the hood it's a focused capture layer: an agent runs alongside your ROS 2 stack, keeps a rolling buffer of the topics you care about, and writes a standard MCAP the moment a detector fires: stall (commanded-but-not-moving, so a parked robot never false-fires), path deviation, low battery, topic dropout, a cross-topic comparison rule, or any threshold rule you write in YAML. The recording path runs in native code, so it stays light on the robot even with high-rate topics like camera and lidar, which matters on compute-constrained hardware like Jetson. Open the web UI, click a session, scrub the timeline. Annotate the moment, share a deep-linked URL with a teammate.
 
@@ -55,10 +55,10 @@ You land on a populated **fleet incident dashboard** (pre-seeded with a sample i
 
 ## Install on a real robot
 
-**One command** — adds the signed apt repository, installs, and wires the config. Idempotent; add `--dry-run` to preview what it would do:
+**One command**: adds the signed apt repository, installs, and wires the config. Idempotent; add `--dry-run` to preview what it would do:
 
 ```bash
-# Single machine — robot + local dashboard (agent, backend, web UI):
+# Single machine: robot + local dashboard (agent, backend, web UI):
 curl -fsSL https://raw.githubusercontent.com/mukul-07/missiondebug/main/scripts/install.sh \
   | sudo bash -s -- --all
 
@@ -87,7 +87,7 @@ sudo apt update
 sudo apt install missiondebug-agent missiondebug-backend missiondebug-web
 ```
 
-Robots that only capture need just `missiondebug-agent`; a central hub machine needs `missiondebug-backend missiondebug-web`. If everything runs on one machine, also add `hub: { url: "http://127.0.0.1:8000" }` to `/etc/missiondebug/config.yaml` so the local dashboard's Agents page and live topic discovery work — the installer's `--all` does this for you.
+Robots that only capture need just `missiondebug-agent`; a central hub machine needs `missiondebug-backend missiondebug-web`. If everything runs on one machine, also add `hub: { url: "http://127.0.0.1:8000" }` to `/etc/missiondebug/config.yaml` so the local dashboard's Agents page and live topic discovery work; the installer's `--all` does this for you.
 
 </details>
 
@@ -145,9 +145,9 @@ Working on MissionDebug itself? [CONTRIBUTING.md](./CONTRIBUTING.md) covers runn
 
 ### 1. Configure the agent for your robot
 
-Two things every robot needs: a **unique `robot_id`** (two robots sharing one id collide into a single entry on the hub — set it before anything else) and the list of **topics to capture**.
+Two things every robot needs: a **unique `robot_id`** (two robots sharing one id collide into a single entry on the hub, so set it before anything else) and the list of **topics to capture**.
 
-The fastest way is the setup wizard — it scans the live ROS graph, pre-checks the topics worth capturing (and warns about ones that *can't* capture, e.g. message packages that aren't built), asks for the robot id and hub URL, and writes the config itself:
+The fastest way is the setup wizard: it scans the live ROS graph, pre-checks the topics worth capturing (and warns about ones that *can't* capture, e.g. message packages that aren't built), asks for the robot id and hub URL, and writes the config itself:
 
 ```bash
 sudo missiondebug-agent init
@@ -162,7 +162,7 @@ sudo nano /etc/missiondebug/config.yaml
 sudo systemctl restart missiondebug-agent
 ```
 
-To verify: open the dashboard's **Agents** page and expand your robot's **▸ topics** — it shows every topic on the robot's graph, whether it's being captured, and flags problems (type not built, no publishers). The same check runs automatically from then on: a **⚠ badge** appears on the robot's row if a configured topic stops being capturable. CLI equivalent: `journalctl -u missiondebug-agent -n 30 --no-pager` should show `Subscribed to <topic> [<type>]` for every topic in your config.
+To verify: open the dashboard's **Agents** page and expand your robot's **▸ topics**: it shows every topic on the robot's graph, whether it's being captured, and flags problems (type not built, no publishers). The same check runs automatically from then on: a **⚠ badge** appears on the robot's row if a configured topic stops being capturable. CLI equivalent: `journalctl -u missiondebug-agent -n 30 --no-pager` should show `Subscribed to <topic> [<type>]` for every topic in your config.
 
 For ready-to-edit starting points see [examples/](./examples/):
 - [`ground-vehicle-config.yaml`](./examples/ground-vehicle-config.yaml): AMRs, delivery bots, indoor service robots
@@ -178,7 +178,7 @@ Whenever a built-in detector or one of your rules fires, the agent saves the pre
 
 Click a session and the timeline + chart + pose track render. Drag the scrubber, hit space to play, use ←/→ for 100ms steps, Shift+← / Shift+→ for 1s steps. Add notes at the playhead with the **+ Add at playhead** button. Copy a deep-linked `?t=23.4` URL with **Copy link** to share an exact frame with a teammate.
 
-![Session detail: a real construction-robot capture — synchronized camera and depth replay, timeline with playhead, odometry charts, and a message inspector](docs/screenshot-detail.png)
+![Session detail: a real construction-robot capture: synchronized camera and depth replay, timeline with playhead, odometry charts, and a message inspector](docs/screenshot-detail.png)
 
 ### 3. Save manually
 
@@ -268,11 +268,11 @@ journalctl -u missiondebug-backend -f     # tail backend/UI logs
 ls -lh /var/lib/missiondebug/sessions/
 curl -s http://localhost:8000/api/sessions | jq '.sessions[0:3]'
 
-# Capture the last 60s right now (always safe — no motion involved)
+# Capture the last 60s right now (always safe, no motion involved)
 curl -X POST http://localhost:7000/sessions/save
 
 # Test the stall detector: command motion while the robot can't move.
-# ⚠ Only with the base e-stopped / wheels off the ground — a live base WILL move.
+# ⚠ Only with the base e-stopped / wheels off the ground; a live base WILL move.
 # (Stall = commanded velocity above the threshold while odometry reports no
 # motion, so publishing zeros can never trigger it.)
 timeout 6 ros2 topic pub -r 10 /cmd_vel geometry_msgs/msg/Twist '{linear: {x: 0.5}}'
@@ -299,8 +299,8 @@ Turning the robot off (a shutdown, a crash, a battery swap) does not lose your c
   sudo systemctl restart missiondebug-agent
   ```
   If your nodes use Cyclone DDS, install it on the robot first: `sudo apt install -y ros-humble-rmw-cyclonedds-cpp`.
-- **Custom message types (px4_msgs and friends):** a topic whose message package isn't built and sourced on the robot is **skipped** — the agent logs `Skipping topic <name>: cannot resolve message type` and captures everything else. Since agent 0.7.4 built colcon workspaces are auto-sourced, so this usually just works; for unusual install locations set `ros_setup_files` in the config (or `MD_ROS_SETUP_FILES`, colon-separated setup.bash paths). The Agents page flags affected topics with a red **type not built** badge.
-- **No sessions appearing:** verify the topics in your config exist (`ros2 topic list`), the rule loaded (`journalctl -u missiondebug-agent | grep Loaded`), and the condition is actually being met. Try the manual save above first — it proves the capture path independent of any rule.
+- **Custom message types (px4_msgs and friends):** a topic whose message package isn't built and sourced on the robot is **skipped**: the agent logs `Skipping topic <name>: cannot resolve message type` and captures everything else. Since agent 0.7.4 built colcon workspaces are auto-sourced, so this usually just works; for unusual install locations set `ros_setup_files` in the config (or `MD_ROS_SETUP_FILES`, colon-separated setup.bash paths). The Agents page flags affected topics with a red **type not built** badge.
+- **No sessions appearing:** verify the topics in your config exist (`ros2 topic list`), the rule loaded (`journalctl -u missiondebug-agent | grep Loaded`), and the condition is actually being met. Try the manual save above first; it proves the capture path independent of any rule.
 - **ROS 1 + ROS 2 env mixed:** if your shell shows `ROS_MASTER_URI` alongside `ROS_DISTRO=humble`, your `~/.bashrc` is sourcing both. Comment out the noetic line.
 
 ---
