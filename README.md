@@ -20,6 +20,8 @@ And you can **ask the whole history in plain English** (*"why does warehouse-bot
 
 ![Ask AI: a plain-English question over the incident history, answered with the sessions it used as clickable citations](docs/screenshot-ask.png)
 
+Most ROS debugging tools assume you knew to start recording. MissionDebug always has the last 60 seconds of your robot in RAM and snapshots it when things go wrong — manually, or automatically when a detector fires. The agent runs entirely on the robot; nothing leaves the machine unless you copy it off, which is why it fits defense, hospital, industrial, and other environments where cloud-first observability isn't an option.
+
 Under the hood it's a focused capture layer: an agent runs alongside your ROS 2 stack, keeps a rolling buffer of the topics you care about, and writes a standard MCAP the moment a detector fires: stall (commanded-but-not-moving, so a parked robot never false-fires), path deviation, low battery, topic dropout, a cross-topic comparison rule, or any threshold rule you write in YAML. The recording path runs in native code, so it stays light on the robot even with high-rate topics like camera and lidar, which matters on compute-constrained hardware like Jetson. Open the web UI, click a session, scrub the timeline. Annotate the moment, share a deep-linked URL with a teammate.
 
 **Works on any ROS 2 robot:** warehouse AMRs, drones (mavros), manipulators (MoveIt2), agriculture, defense. The agent is topic-agnostic; the warehouse AGV is just the running example. The replay renders camera, pose, velocity, **per-joint** (manipulators), and auto scalar charts from whatever topics you capture. See [`examples/`](./examples/) for ready-to-edit configs per robot type.
@@ -37,43 +39,19 @@ Standards-native (MCAP + Foxglove). Local-first: self-hostable end to end, no ma
 
 MissionDebug is the **post-incident layer**. It's what you reach for *after* the alert fires.
 
-**Single robot or whole fleet.** Each agent works standalone: capture + replay on one robot, no hub required. Point agents at a central **hub** (Fleet Edition) and they sync their incident metadata into the fleet dashboard, similarity search, and resolution tracking shown above. The hub is self-hostable end to end and read-only on robots; recordings stay on the robot (or your S3 bucket) by default and never auto-upload.
-
-## Fleet Edition (commercial)
-
-The single-robot **capture + replay + incident dashboard is free and MIT**: run it forever, including commercially. **Fleet Edition** adds the features a 100-robot operation needs, unlocked with a license key:
-
-- **Central hub at fleet scale:** every robot's incidents in one dashboard
-- **Ask AI:** query the whole fleet's incident history in plain English (grounded + cited; BYO LLM key or air-gapped local model)
-- **Alerting:** Slack / PagerDuty / webhook the moment a robot captures an incident, with the *"Nth occurrence"* recurrence count and a deep-link to the replay
-- **OpenTelemetry export:** incidents + KPIs flow into the Grafana / Datadog / alert routing you already run
-- **Retention & cold-tier lifecycle:** release old recording bytes on a schedule but keep the incident memory
-- **Priority support + onboarding**
-
-Activate by setting a license key on the hub. Without it, the paid features stay off and the free core is unaffected:
-
-```bash
-export MD_LICENSE_KEY=<your key>
-curl -s http://localhost:8000/api/admin/license   # {"licensed": true, "features": [...], ...}
-```
-
-Pricing is **per-robot-per-month** (volume discounts at 100+ robots): see the **[plans & pricing](https://mukul-07.github.io/missiondebug-demos/commercial.html)**. The paid features live in `ee/` (source-visible, proprietary); everything else is MIT, see [LICENSING.md](./LICENSING.md). Try the full product in 60 seconds via the **[demo repo](https://github.com/mukul-07/missiondebug-demos)**.
-
-## Why this exists
-
-Most ROS debugging tools assume you knew to start recording. MissionDebug always has the last 60 seconds of your robot in RAM and snapshots it when things go wrong, manually or automatically when a detector fires. The agent runs entirely on the robot; nothing leaves the machine unless you copy it off. Useful in defense, hospital, industrial, and other environments where cloud-first observability isn't an option.
-
-![Session list: auto-saves labeled by what triggered them](docs/screenshot-list.png)
-
-> Sessions auto-save when a detector fires; the label tells you why. Click one to scrub the timeline.
-
-![Session detail: a real construction-robot capture — synchronized camera and depth replay, timeline with playhead, odometry charts, and a message inspector](docs/screenshot-detail.png)
-
----
+**Single robot or whole fleet.** Each agent works standalone: capture + replay on one robot, no hub required. Point agents at a central **hub** (Fleet Edition) and they sync their incident metadata into the fleet dashboard, similarity search, and resolution tracking shown above. The hub is self-hostable end to end and read-only on robots; recordings stay on the robot (or your S3 bucket) by default and never auto-upload. Fleet setup guide: [docs/HUB.md](./docs/HUB.md).
 
 ## Try it without installing anything (60 seconds)
 
-No ROS install, no source checkout, just Docker. See [missiondebug-demos](https://github.com/mukul-07/missiondebug-demos): `git clone` then `docker compose up` then land on a populated **fleet incident dashboard** (pre-seeded with a sample incident history), then scrub a **real construction-robot capture** (camera + depth + odometry from an indoor site) in your browser. It ships a [5-minute demo script](https://github.com/mukul-07/missiondebug-demos/blob/main/docs/DEMO-SCRIPT.md) for walking someone through it, and the [60-second video tour](https://github.com/mukul-07/missiondebug-demos/blob/main/docs/demo.mp4) shown at the top.
+No ROS install, no source checkout, just Docker:
+
+```bash
+git clone https://github.com/mukul-07/missiondebug-demos
+cd missiondebug-demos && docker compose up
+# then open http://localhost:8000
+```
+
+You land on a populated **fleet incident dashboard** (pre-seeded with a sample incident history), and can scrub a **real construction-robot capture** (camera + depth + odometry from an indoor site) in your browser. The [missiondebug-demos](https://github.com/mukul-07/missiondebug-demos) repo ships a [5-minute demo script](https://github.com/mukul-07/missiondebug-demos/blob/main/docs/DEMO-SCRIPT.md) for walking someone through it, and the [60-second video tour](https://github.com/mukul-07/missiondebug-demos/blob/main/docs/demo.mp4) shown at the top.
 
 ## Install on a real robot
 
@@ -196,7 +174,11 @@ For ready-to-edit starting points see [examples/](./examples/):
 
 Whenever a built-in detector or one of your rules fires, the agent saves the previous 60 seconds as an MCAP. Browse to `http://<robot>:8000` and your sessions show up at the top of the list, labeled with what triggered them (`anomaly:stall`, `anomaly:my-rule-name`, `anomaly:dropout:/lidar`, etc.).
 
+![Session list: auto-saves labeled by what triggered them](docs/screenshot-list.png)
+
 Click a session and the timeline + chart + pose track render. Drag the scrubber, hit space to play, use ←/→ for 100ms steps, Shift+← / Shift+→ for 1s steps. Add notes at the playhead with the **+ Add at playhead** button. Copy a deep-linked `?t=23.4` URL with **Copy link** to share an exact frame with a teammate.
+
+![Session detail: a real construction-robot capture — synchronized camera and depth replay, timeline with playhead, odometry charts, and a message inspector](docs/screenshot-detail.png)
 
 ### 3. Save manually
 
@@ -358,6 +340,26 @@ And **outbound**, push incidents *to* the tools you already run (Fleet Edition):
 
 Full recipes + working scripts: [`docs/INTEGRATIONS.md`](./docs/INTEGRATIONS.md).
 
+## Fleet Edition (commercial)
+
+The single-robot **capture + replay + incident dashboard is free and MIT**: run it forever, including commercially. **Fleet Edition** adds the features a 100-robot operation needs, unlocked with a license key:
+
+- **Central hub at fleet scale:** every robot's incidents in one dashboard
+- **Ask AI:** query the whole fleet's incident history in plain English (grounded + cited; BYO LLM key or air-gapped local model)
+- **Alerting:** Slack / PagerDuty / webhook the moment a robot captures an incident, with the *"Nth occurrence"* recurrence count and a deep-link to the replay
+- **OpenTelemetry export:** incidents + KPIs flow into the Grafana / Datadog / alert routing you already run
+- **Retention & cold-tier lifecycle:** release old recording bytes on a schedule but keep the incident memory
+- **Priority support + onboarding**
+
+Activate by setting a license key on the hub. Without it, the paid features stay off and the free core is unaffected:
+
+```bash
+export MD_LICENSE_KEY=<your key>
+curl -s http://localhost:8000/api/admin/license   # {"licensed": true, "features": [...], ...}
+```
+
+Pricing is **per-robot-per-month** (volume discounts at 100+ robots): see the **[plans & pricing](https://mukul-07.github.io/missiondebug-demos/commercial.html)**. The paid features live in `ee/` (source-visible, proprietary); everything else is MIT, see [LICENSING.md](./LICENSING.md).
+
 ## How it's built
 
 - **Agent** (Python, `agent/`): rclpy subscribers feed per-topic ring buffers in RAM (rate-limited & sized), an MCAP writer, and a control HTTP API on `:7000`. Built-in detectors (stall, path-deviation, battery_low, topic_dropout, cross-topic compare) plus a config-driven rule engine; all detectors auto-save and label the resulting session.
@@ -367,7 +369,7 @@ Full recipes + working scripts: [`docs/INTEGRATIONS.md`](./docs/INTEGRATIONS.md)
 ## Tests
 
 ```bash
-make test                    # 398 tests across agent + backend (186 agent + 212 backend)
+make test                    # 407 tests across agent + backend (189 agent + 218 backend)
 ```
 
 ## License
