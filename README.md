@@ -10,6 +10,8 @@
 
 > **Incident memory for your ROS 2 robot fleet.** Capture the 60 seconds around every failure, replay it like a black box in Foxglove, and query your whole fleet's incident history so your team stops re-solving the same problem.
 
+[![MissionDebug in motion — the fleet dashboard, a real construction-robot capture replayed with camera + depth, and "has this happened before?" answered with past root causes. Click for the full tour.](https://raw.githubusercontent.com/mukul-07/missiondebug-demos/main/docs/demo-preview.gif)](https://github.com/mukul-07/missiondebug-demos/blob/main/docs/demo.mp4)
+
 The deepest fleet-ops pain isn't "I can't find what broke." It's *"we keep re-solving the same incident because nobody remembers it broke this way before."* MissionDebug fixes that. Every capture gets a structured summary; the fleet **incident dashboard** rolls up recurrence rate, MTTR, and top failure patterns; and opening any incident answers **"has this happened before?"**, surfacing similar past incidents *with how they were resolved*.
 
 And you can **ask the whole history in plain English** (*"why does warehouse-bot-03 keep stalling, and what fixed it last time?"*) and get a grounded, citation-backed answer. Bring your own LLM key (Anthropic or OpenAI), or point it at an air-gapped local model.
@@ -23,8 +25,6 @@ Under the hood it's a focused capture layer: an agent runs alongside your ROS 2 
 **Works on any ROS 2 robot:** warehouse AMRs, drones (mavros), manipulators (MoveIt2), agriculture, defense. The agent is topic-agnostic; the warehouse AGV is just the running example. The replay renders camera, pose, velocity, **per-joint** (manipulators), and auto scalar charts from whatever topics you capture. See [`examples/`](./examples/) for ready-to-edit configs per robot type.
 
 Standards-native (MCAP + Foxglove). Local-first: self-hostable end to end, no mandatory cloud, no login, no proprietary format. Air-gap friendly: structured summaries and similarity search work fully offline.
-
-https://github.com/mukul-07/missiondebug/raw/main/docs/demo.mp4
 
 ## How MissionDebug fits
 
@@ -73,9 +73,7 @@ Most ROS debugging tools assume you knew to start recording. MissionDebug always
 
 ## Try it without installing anything (60 seconds)
 
-No ROS install, no source checkout, just Docker. See [missiondebug-demos](https://github.com/mukul-07/missiondebug-demos): `git clone` then `docker compose up` then land on a populated **fleet incident dashboard** (pre-seeded with a sample incident history), then scrub a **real construction-robot capture** (camera + depth + odometry from an indoor site) in your browser. It ships a [5-minute demo script](https://github.com/mukul-07/missiondebug-demos/blob/main/docs/DEMO-SCRIPT.md) for walking someone through it.
-
-[![MissionDebug in motion — the fleet dashboard, a real construction-robot capture replayed with camera + depth, and "has this happened before?" answered with past root causes. Click for the full tour.](https://raw.githubusercontent.com/mukul-07/missiondebug-demos/main/docs/demo-preview.gif)](https://github.com/mukul-07/missiondebug-demos/blob/main/docs/demo.mp4)
+No ROS install, no source checkout, just Docker. See [missiondebug-demos](https://github.com/mukul-07/missiondebug-demos): `git clone` then `docker compose up` then land on a populated **fleet incident dashboard** (pre-seeded with a sample incident history), then scrub a **real construction-robot capture** (camera + depth + odometry from an indoor site) in your browser. It ships a [5-minute demo script](https://github.com/mukul-07/missiondebug-demos/blob/main/docs/DEMO-SCRIPT.md) for walking someone through it, and the [60-second video tour](https://github.com/mukul-07/missiondebug-demos/blob/main/docs/demo.mp4) shown at the top.
 
 ## Install on a real robot
 
