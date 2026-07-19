@@ -75,6 +75,8 @@ Most ROS debugging tools assume you knew to start recording. MissionDebug always
 
 No ROS install, no source checkout, just Docker. See [missiondebug-demos](https://github.com/mukul-07/missiondebug-demos): `git clone` then `docker compose up` then land on a populated **fleet incident dashboard** (pre-seeded with a sample incident history), then scrub a **real construction-robot capture** (camera + depth + odometry from an indoor site) in your browser. It ships a [5-minute demo script](https://github.com/mukul-07/missiondebug-demos/blob/main/docs/DEMO-SCRIPT.md) for walking someone through it.
 
+[![MissionDebug in motion — the fleet dashboard, a real construction-robot capture replayed with camera + depth, and "has this happened before?" answered with past root causes. Click for the full tour.](https://raw.githubusercontent.com/mukul-07/missiondebug-demos/main/docs/demo-preview.gif)](https://github.com/mukul-07/missiondebug-demos/blob/main/docs/demo.mp4)
+
 ## Install on a real robot
 
 **One command** — adds the signed apt repository, installs, and wires the config. Idempotent; add `--dry-run` to preview what it would do:
